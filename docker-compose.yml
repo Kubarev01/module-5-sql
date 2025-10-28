@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   db:
     image: postgres:16
@@ -14,7 +12,18 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-
+  app:
+    build: ./app
+    container_name: fastapi_app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./app:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql+psycopg2://myuser:mypassword@db:5432/mydatabase
 
 volumes:
   postgres_data:
