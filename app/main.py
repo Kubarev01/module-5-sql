@@ -1,17 +1,14 @@
 from fastapi import FastAPI, Depends
-from sqlalchemy.orm import Session
-from database import SessionLocal
+
+from routers.books import router
+
 
 app = FastAPI()
 
 # Dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+
+app.include_router(router)
 
 @app.get("/")
-def root():
-    return {"message": "FastAPI + Postgres готово!"}
+async def root():
+    return {"message": "Hello World"}
