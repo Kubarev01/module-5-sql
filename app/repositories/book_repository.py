@@ -1,4 +1,5 @@
-from sqlalchemy import select, selectinload
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from database import SessionLocal
 from models import Book
 
@@ -7,9 +8,15 @@ class BookRepository:
         self.session_maker = session_maker
 
     async def get_by_id(self, book_id: int):
-        async with self.session_maker() as session:
-            result = await session.execute(select(Book).options(selectinload(Book.author)).where(Book.id == book_id))
-            return result.scalars().first()
+        async with self.session_maker() as session:  
+            stmt = (
+                select(Book)
+                .options(selectinload(Book.author))
+                .where(Book.id == book_id)
+            )
+            result = await session.execute(stmt)
+            book = result.scalars().first() 
+            return book
     
     async def create(self, book: Book):
         async with self.session_maker() as session:
