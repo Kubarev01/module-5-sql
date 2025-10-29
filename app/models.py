@@ -13,7 +13,7 @@ class Book(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
     genre : Mapped[str] = mapped_column(String, nullable=False)
-    author_id : Mapped[int] = mapped_column(Integer, sqlalchemy.ForeignKey('authors.id'), nullable=False)
+    author_id : Mapped[int] = mapped_column(Integer, sqlalchemy.ForeignKey('authors.id'), nullable=True)
 
 class Author(Base):
     __tablename__ = 'authors'
