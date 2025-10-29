@@ -3,8 +3,8 @@ from sqlalchemy.orm import Session
 import asyncio
 from repositories.book_repository import BookRepository
 from database import get_db_session
-from schemas import BookSchema
-from models import Book
+from schemas import BookSchema, AuthorSchema
+from models import Book, Author
 
 
 router = APIRouter(
@@ -19,6 +19,17 @@ async def create_book(new_book:BookSchema,db: Session = Depends(get_db_session))
     if not created_book:
         raise HTTPException(status_code=400, detail="Ошибка при создании книги")
     return created_book
+
+@router.post('/with-author', summary="Создание книги с автором", status_code=status.HTTP_201_CREATED)
+async def create_book_with_author(new_book: BookSchema, new_author: AuthorSchema, db: Session = Depends(get_db_session)):
+    repo = BookRepository()
+    created_book = await repo.create_book_with_author(
+        book_data = new_book,
+        author_data = new_author
+    )
+    if not created_book:
+        raise HTTPException(status_code=400, detail="Ошибка при создании книги")
+    return {"status":"success","msg":"Книга с автором добавлена","book": created_book, "author": new_author}
 
 @router.get("/{book_id}",summary = "Просмотр книг")
 async def get_book(book_id: int, db: Session = Depends(get_db_session)):

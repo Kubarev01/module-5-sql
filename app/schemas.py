@@ -9,5 +9,8 @@ class BookSchema(BaseSchema):
 
     title: str
     genre: str
-    author_id: int
+
+
+class AuthorSchema(BaseSchema):
+    name: str
 
