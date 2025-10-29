@@ -46,6 +46,10 @@ async def books_authors_report(db: AsyncSession = Depends(get_db_session)):
 async def create_book(new_book:BookSchema,db: AsyncSession = Depends(get_db_session)):
     repo = BookRepository()
     created_book = await repo.create(Book(title=new_book.title, genre=new_book.genre, author_id=new_book.author_id))
+
+    await db.commit()
+    await db.refresh(created_book)
+
     if not created_book:
         raise HTTPException(status_code=400, detail="Ошибка при создании книги")
     return created_book
@@ -57,6 +61,11 @@ async def create_book_with_author(new_book: BookSchema, new_author: AuthorSchema
         book_data = new_book,
         author_data = new_author
     )
+
+    await db.commit()
+    await db.refresh(created_book)
+    await db.refresh(new_author)
+
     if not created_book:
         raise HTTPException(status_code=400, detail="Ошибка при создании книги")
     return {"status":"success","msg":"Книга с автором добавлена","book": created_book, "author": new_author}
@@ -65,6 +74,7 @@ async def create_book_with_author(new_book: BookSchema, new_author: AuthorSchema
 async def get_book(book_id: int, db: AsyncSession = Depends(get_db_session)):
     repo = BookRepository()
     book = await repo.get_by_id(book_id)
+
     if book:
         return book
     raise HTTPException(status_code=404, detail="Книга не найдена")
@@ -74,6 +84,10 @@ async def get_book(book_id: int, db: AsyncSession = Depends(get_db_session)):
 async def update_book(book_id: int, new_book:BookSchema, db: AsyncSession = Depends(get_db_session)):
     repo = BookRepository()
     updated_book = await repo.update_by_id(book_id, new_data=new_book.dict())
+
+    await db.commit()
+    await db.refresh(updated_book)
+
     if updated_book:
         return {"status":"success","msg":"Книга обновлена","book": updated_book}
     raise HTTPException(status_code=404, detail="Книга не найдена")
@@ -84,6 +98,10 @@ async def update_book(book_id: int, new_book:BookSchema, db: AsyncSession = Depe
 async def delete_book(book_id:int, db: AsyncSession = Depends(get_db_session)):
     repo = BookRepository()
     deleted = await repo.delete_by_id(book_id)
+
+    await db.commit()
+    await db.refresh(deleted)
+
     if deleted:
         return {"status":"success","msg":"Книга удалена"}
     raise HTTPException(status_code=404, detail="Книга не найдена")
