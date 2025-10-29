@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, selectinload
 from database import SessionLocal
 from models import Book
 
@@ -8,7 +8,7 @@ class BookRepository:
 
     async def get_by_id(self, book_id: int):
         async with self.session_maker() as session:
-            result = await session.execute(select(Book).where(Book.id == book_id))
+            result = await session.execute(select(Book).options(selectinload(Book.author)).where(Book.id == book_id))
             return result.scalars().first()
     
     async def create(self, book: Book):
