@@ -8,10 +8,10 @@ from fastapi import HTTPException
 from database.redis_client import redis_client as redis
 
 class BookRepository:
-    def __init__(self, session_maker=SessionLocal):
+    def __init__(self, session_maker=SessionLocal, ttl: int = 300):
         self.session_maker = session_maker
         self.redis = redis
-        self.ttl = 300
+        self.ttl = ttl
 
     async def get_by_id(self, book_id: int):
         cached_book = await redis.get(f"book:{book_id}") 
@@ -30,12 +30,12 @@ class BookRepository:
             book = result.scalars().first() 
             if book:
                 book_schema = BookSchema(
-                    id=book.id,
-                    title=book.title,
-                    genre=book.genre,
-                    author=AuthorSchema(
-                        id=book.author.id,
-                        name=book.author.name
+                    id = book.id,
+                    title = book.title,
+                    genre = book.genre,
+                    author = AuthorSchema(
+                        id = book.author.id,
+                        name = book.author.name
                     ) if book.author else None
                 )
                 await self.redis.set(f"book:{book_id}", json.dumps(book_schema.dict()), ex=self.ttl)
@@ -50,18 +50,36 @@ class BookRepository:
             await session.refresh(book)
             return book
     
-    async def update_by_id(self, book_id: int, new_data: dict):
+    async def update_by_id(self, book_id: int, new_data: dict) -> BookSchema | None:
         async with self.session_maker() as session:
-            result = await session.execute(select(Book).where(Book.id == book_id))
-            book = result.scalars().first()
-            if book:
+            async with session.begin():  
+                result = await session.execute(
+                    select(Book).where(Book.id == book_id).options(selectinload(Book.author))
+                )
+                book = result.scalars().first()
+                if not book:
+                    return None
+
                 for key, value in new_data.items():
-                    setattr(book, key, value)
-                await session.commit()
-                await session.refresh(book)
-                return book
-            return None
-        
+                    if hasattr(book, key):
+                        setattr(book, key, value)
+
+                await session.flush()
+
+               
+                book_schema = BookSchema(
+                    title=book.title,
+                    genre=book.genre,
+                    author=AuthorSchema(
+                        id=book.author.id,
+                        name=book.author.name
+                    ) if book.author else None
+                )
+       
+        await redis.delete(f"book:{book_id}")
+
+        return book_schema
+
     async def delete_by_id(self, book_id: int):
         async with self.session_maker() as session:
             result = await session.execute(select(Book).where(Book.id == book_id))

@@ -84,7 +84,7 @@ async def update_book(book_id: int, new_book:BookSchema, db: AsyncSession = Depe
     updated_book = await repo.update_by_id(book_id, new_data=new_book.dict())
 
     await db.commit()
-    await db.refresh(updated_book)
+    
 
     if updated_book:
         return {"status":"success","msg":"Книга обновлена","book": updated_book}
