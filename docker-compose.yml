@@ -27,6 +27,23 @@ services:
       PYTHONPATH: /app
       PYTHONUNBUFFERED: "1"
     restart: on-failure
+  
+  redis:
+    image: redis:alpine
+    container_name: redis_cache
+    ports:
+      - "6379:6379"
+    restart: always
+
+  mongodb:
+    image: mongo:6
+    container_name: mongo_db
+    ports:
+      - "27017:27017"
+    restart: always
+    volumes:
+      - mongo_data:/data/db
 
 volumes:
   postgres_data:
+  mongo_data:
