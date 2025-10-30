@@ -1,6 +1,6 @@
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from database import SessionLocal
+from app.database.postgres_client import SessionLocal
 from models import Book, Author
 from schemas import AuthorSchema, BookSchema
 from fastapi import HTTPException

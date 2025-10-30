@@ -4,7 +4,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 import asyncio
 from repositories.book_repository import BookRepository
-from database import get_db_session
+from app.database.postgres_client import get_db_session
 from schemas import BookSchema, AuthorSchema
 from models import Book, Author
 
