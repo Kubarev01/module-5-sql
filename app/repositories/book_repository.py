@@ -1,16 +1,26 @@
+import json
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from app.database.postgres_client import SessionLocal
+from database.postgres_client import SessionLocal
 from models import Book, Author
 from schemas import AuthorSchema, BookSchema
 from fastapi import HTTPException
+from database.redis_client import redis_client as redis
 
 class BookRepository:
     def __init__(self, session_maker=SessionLocal):
         self.session_maker = session_maker
+        self.redis = redis
+        self.ttl = 300
 
     async def get_by_id(self, book_id: int):
-        async with self.session_maker() as session:  
+        cached_book = await redis.get(f"book:{book_id}") 
+
+        if cached_book:
+            payload = json.loads(cached_book)
+            return BookSchema(**payload)
+        
+        async with self.session_maker() as session:
             stmt = (
                 select(Book)
                 .options(selectinload(Book.author))
@@ -18,7 +28,20 @@ class BookRepository:
             )
             result = await session.execute(stmt)
             book = result.scalars().first() 
-            return book
+            if book:
+                book_schema = BookSchema(
+                    id=book.id,
+                    title=book.title,
+                    genre=book.genre,
+                    author=AuthorSchema(
+                        id=book.author.id,
+                        name=book.author.name
+                    ) if book.author else None
+                )
+                await self.redis.set(f"book:{book_id}", json.dumps(book_schema.dict()), ex=self.ttl)
+                return book_schema
+            
+        return None
     
     async def create(self, book: Book):
         async with self.session_maker() as session:

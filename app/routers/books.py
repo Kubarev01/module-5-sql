@@ -4,10 +4,11 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 import asyncio
 from repositories.book_repository import BookRepository
-from app.database.postgres_client import get_db_session
+from database.postgres_client import get_db_session
 from schemas import BookSchema, AuthorSchema
 from models import Book, Author
 
+repo = BookRepository()
 
 router = APIRouter(
     prefix="/books",
@@ -44,7 +45,6 @@ async def books_authors_report(db: AsyncSession = Depends(get_db_session)):
 
 @router.post('/', summary = "Добавление новой книги",status_code=status.HTTP_201_CREATED)
 async def create_book(new_book:BookSchema,db: AsyncSession = Depends(get_db_session)):
-    repo = BookRepository()
     created_book = await repo.create(Book(title=new_book.title, genre=new_book.genre, author_id=new_book.author_id))
 
     await db.commit()
@@ -56,7 +56,6 @@ async def create_book(new_book:BookSchema,db: AsyncSession = Depends(get_db_sess
 
 @router.post('/with-author', summary="Создание книги с автором", status_code=status.HTTP_201_CREATED)
 async def create_book_with_author(new_book: BookSchema, new_author: AuthorSchema, db: AsyncSession = Depends(get_db_session)):
-    repo = BookRepository()
     created_book = await repo.create_book_with_author(
         book_data = new_book,
         author_data = new_author
@@ -72,7 +71,7 @@ async def create_book_with_author(new_book: BookSchema, new_author: AuthorSchema
 
 @router.get("/{book_id}",summary = "Просмотр книг")
 async def get_book(book_id: int, db: AsyncSession = Depends(get_db_session)):
-    repo = BookRepository()
+    
     book = await repo.get_by_id(book_id)
 
     if book:
@@ -82,7 +81,6 @@ async def get_book(book_id: int, db: AsyncSession = Depends(get_db_session)):
 
 @router.put("/{book_id}", summary="Изменить книгу")
 async def update_book(book_id: int, new_book:BookSchema, db: AsyncSession = Depends(get_db_session)):
-    repo = BookRepository()
     updated_book = await repo.update_by_id(book_id, new_data=new_book.dict())
 
     await db.commit()
