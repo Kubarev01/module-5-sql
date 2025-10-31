@@ -23,4 +23,12 @@ class Author(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     books = relationship("Book", back_populates="author")
    
+
+class Review(Base):
+    __tablename__ = 'reviews'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    book_id: Mapped[int] = mapped_column(Integer, sqlalchemy.ForeignKey('books.id'), nullable=False)
+    content: Mapped[str] = mapped_column(String(500), nullable=False)
+    book = relationship("Book")
     

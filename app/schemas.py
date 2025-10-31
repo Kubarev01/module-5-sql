@@ -14,3 +14,12 @@ class BookSchema(BaseSchema):
 class AuthorSchema(BaseSchema):
     name: str
 
+
+
+class ReviewSchema(BaseSchema):
+    book_id: int
+    content: str = Field(..., max_length=500)
+
+    model_config = {
+        "from_attributes": True  
+    }
