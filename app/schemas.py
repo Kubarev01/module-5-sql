@@ -24,3 +24,6 @@ class ReviewSchema(BaseSchema):
     model_config = {
         "from_attributes": True  
     }
+
+class InventoryUpdate(BaseSchema):
+    delta: int  

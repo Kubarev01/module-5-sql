@@ -32,3 +32,11 @@ class Review(Base):
     content: Mapped[str] = mapped_column(String(500), nullable=False)
     book = relationship("Book")
     
+
+class Inventory(Base):
+    __tablename__ = 'inventory_updates'
+
+    product_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    stock: Mapped[int] = mapped_column(Integer, default=0)
+
+   
