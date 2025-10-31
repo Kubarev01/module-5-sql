@@ -1,5 +1,6 @@
 from fastapi import HTTPException, status, Depends, APIRouter
 
+from database.redis_client import redis_client as redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 import asyncio
@@ -45,10 +46,10 @@ async def books_authors_report(db: AsyncSession = Depends(get_db_session)):
 
 @router.post('/', summary = "Добавление новой книги",status_code=status.HTTP_201_CREATED)
 async def create_book(new_book:BookSchema,db: AsyncSession = Depends(get_db_session)):
-    created_book = await repo.create(Book(title=new_book.title, genre=new_book.genre, author_id=new_book.author_id))
+    created_book = await repo.create({"title": new_book.title,
+                                       "genre": new_book.genre,
+                                       "author_id": new_book.author_id})
 
-    await db.commit()
-    await db.refresh(created_book)
 
     if not created_book:
         raise HTTPException(status_code=400, detail="Ошибка при создании книги")
@@ -62,8 +63,7 @@ async def create_book_with_author(new_book: BookSchema, new_author: AuthorSchema
     )
 
     await db.commit()
-    await db.refresh(created_book)
-    await db.refresh(new_author)
+ 
 
     if not created_book:
         raise HTTPException(status_code=400, detail="Ошибка при создании книги")
@@ -87,6 +87,7 @@ async def update_book(book_id: int, new_book:BookSchema, db: AsyncSession = Depe
     
 
     if updated_book:
+        await redis.publish("cache:invalidate", str(book_id))
         return {"status":"success","msg":"Книга обновлена","book": updated_book}
     raise HTTPException(status_code=404, detail="Книга не найдена")
     
@@ -98,7 +99,6 @@ async def delete_book(book_id:int, db: AsyncSession = Depends(get_db_session)):
     deleted = await repo.delete_by_id(book_id)
 
     await db.commit()
-    await db.refresh(deleted)
 
     if deleted:
         return {"status":"success","msg":"Книга удалена"}

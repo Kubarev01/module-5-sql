@@ -9,6 +9,7 @@ class BookSchema(BaseSchema):
 
     title: str
     genre: str
+    author_id: int | None = None
 
 
 class AuthorSchema(BaseSchema):
