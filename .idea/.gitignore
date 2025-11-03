@@ -3,3 +3,9 @@
 /workspace.xml
 __pycache__/
 idea/
+.venv/
+.idea/
+.pytest_cache/
+/__pycache__/
+__pycache__/
+.gitignore
