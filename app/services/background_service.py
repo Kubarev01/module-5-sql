@@ -1,5 +1,5 @@
 import asyncio
-from database.redis_client import redis_client as redis  # ✅ асинхронный Redis клиент
+from database.redis_client import redis_client as redis  
 
 async def cache_invalidator():
     print("🔔 Cache invalidator started")

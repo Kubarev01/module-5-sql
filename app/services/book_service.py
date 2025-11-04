@@ -1,4 +1,3 @@
-# services/book_service.py
 class BookService:
     def __init__(self, repo, redis = None):
         self.repo = repo

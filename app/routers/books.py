@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from repositories.book_repository import BookRepository
 from database.postgres_client import get_db_session
 from schemas import BookSchema, AuthorSchema
-from models import Book, Author
 from database.redis_client import redis_client as redis
 from services.book_service import BookService
 

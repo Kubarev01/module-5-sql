@@ -16,6 +16,5 @@ def db_session():
     print("Сессия закрыта")
 
 def test_db_session_works(db_session):
-    # проверяем, что сессия это объект с методом add
     assert hasattr(db_session, "add")
     print("Тест сессии выполнен")
