@@ -39,3 +39,5 @@ typing_extensions==4.15.0
 urllib3==2.5.0
 uvicorn==0.38.0
 wrapt==2.0.0
+coverage==7.11.0
+pytest-cov==7.0.0
