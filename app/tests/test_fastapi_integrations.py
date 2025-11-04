@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 from main import app 
 from database.postgres_client import get_db_session
 
+
 book_id = 35
 class FakeDbSession:
     async def execute(self, sql, *args, **kwargs):
