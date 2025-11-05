@@ -13,6 +13,7 @@ class DummyRepo:
     
 
 class AuthorService:
+    _semaphore = asyncio.Semaphore(5)
     def __init__(self, repo, base_url="http://testserver"):
         self.repo = repo
         self.client = AsyncClient(base_url=base_url)
@@ -29,18 +30,19 @@ class AuthorService:
         except asyncio.TimeoutError:
             print("Repo timed out")
             return None
+        
+        async with self._semaphore:
+            try:
+                response = await self.breaker.call_async(
+                    self.client.get,
+                    f"/authors/{author_id}",
+                )
+            except CircuitBreakerError:
 
-        try:
-            response = await self.breaker.call_async(
-                self.client.get,
-                f"/authors/{author_id}",
-            )
-        except CircuitBreakerError:
-
-            return {
-                "id": author_id,
-                "name": "Default Author",
-            }
+                return {
+                    "id": author_id,
+                    "name": "Default Author",
+                }
 
 
         if response.status_code == 200:
