@@ -42,6 +42,9 @@ frozenlist==1.8.0
 multidict==6.7.0
 propcache==0.4.1
 yarl==1.22.0
+grpcio==1.76.0
+grpcio-tools==1.76.0
+protobuf==6.33.0
 testcontainers==4.13.2
 typing-inspection==0.4.2
 typing_extensions==4.15.0

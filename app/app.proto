@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package app;
+
+message AuthorRequest {
+  int32 id = 1;
+}
+
+message AuthorReply {
+  int32 id = 1;
+  string name = 2;
+  string biography = 3;
+}
+
+message Empty {}
+
+service AuthorService {
+  rpc GetAuthor(AuthorRequest) returns (AuthorReply);
+  rpc ListAuthors(Empty) returns (stream AuthorReply);
+}
