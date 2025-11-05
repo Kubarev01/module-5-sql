@@ -2,7 +2,7 @@ from httpx import AsyncClient, RequestError, ReadTimeout
 import asyncio
 import backoff
 from types import SimpleNamespace
-
+from repositories.author_repository import AuthorRepository
 from aiobreaker import CircuitBreaker, CircuitBreakerError
 
 
@@ -14,7 +14,7 @@ class DummyRepo:
 
 class AuthorService:
     _semaphore = asyncio.Semaphore(5)
-    def __init__(self, repo, base_url="http://testserver"):
+    def __init__(self, repo: AuthorRepository, base_url="http://localhost:8000"):
         self.repo = repo
         self.client = AsyncClient(base_url=base_url)
 
@@ -33,19 +33,37 @@ class AuthorService:
         
         async with self._semaphore:
             try:
-                response = await self.breaker.call_async(
-                    self.client.get,
-                    f"/authors/{author_id}",
+                author_call, review_call = await asyncio.gather(
+                    self.breaker.call_async(
+                        self.client.get,
+                        f"/authors/{author_id}",
+                    ),
+                    self.client.get(f"/authors/{author_id}/reviews"),
                 )
-            except CircuitBreakerError:
+                responses = await asyncio.gather(
+                author_call,
+                review_call,
+                return_exceptions=True,  
+            )
+            except CircuitBreakerError as e:
+                
+                return print(f"Circuit breaker is open: {e}")
+           
+            
 
-                return {
-                    "id": author_id,
-                    "name": "Default Author",
-                }
+            author_response, review_response = responses
+            if isinstance(author_response, Exception):
+                print(f"Author service call failed: {author_response}")
+                return None
+            if isinstance(review_response, Exception):
+                print(f"Review service call failed: {review_response}")
+                return None
 
-
-        if response.status_code == 200:
-            return response.json()
-        else:
-            return None
+            return SimpleNamespace(
+                id=author.id,
+                name=author_response.json().get("name"),
+                reviews=review_response.json(),
+            )
+        
+    async def create_author(self, author_data: dict):
+        return await self.repo.create(author_data)

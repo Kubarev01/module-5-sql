@@ -14,7 +14,7 @@ router = APIRouter(
 )
 
 @router.post('/', summary = "Добавление нового автора",status_code=status.HTTP_201_CREATED)
-async def create_author(new_author:AuthorSchema,db = Depends(get_db_session)):
+async def post_author(new_author:AuthorSchema,db = Depends(get_db_session)):
     created_author = await service.create_author({"name": new_author.name})
 
     if not created_author:
@@ -28,8 +28,15 @@ async def get_author(author_id: int, db = Depends(get_db_session)):
         raise HTTPException(status_code=404, detail="Автор не найден")
     return author
 
+@router.get('/{author_id}/reviews', summary="Получить отзывы об авторе по ID")
+async def get_author_reviews(author_id: int, db = Depends(get_db_session)):
+    author =  await service.get_author_details(author_id)
+    if not author:
+        raise HTTPException(status_code=404, detail="Автор не найден")
+    return author.reviews
+
 @router.put('/{author_id}', summary="Обновить информацию об авторе")
-async def update_author(author_id: int, updated_author: AuthorSchema, db = Depends(get_db_session)):
+async def put_author(author_id: int, updated_author: AuthorSchema, db = Depends(get_db_session)):
     author = await service.update(author_id, {"name": updated_author.name})
     if not author:
         raise HTTPException(status_code=404, detail="Автор не найден")
