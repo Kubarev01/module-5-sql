@@ -4,8 +4,7 @@ import backoff
 from types import SimpleNamespace
 from repositories.author_repository import AuthorRepository
 from aiobreaker import CircuitBreaker, CircuitBreakerError
-
-
+import aiohttp
 class DummyRepo:
     async def get_by_id(self, author_id: int):
         # просто заглушка, чтобы не мешала логике breaker’а
@@ -26,7 +25,8 @@ class AuthorService:
     @backoff.on_exception(backoff.expo, (RequestError, ReadTimeout), max_tries=3)
     async def get_author_details(self, author_id: int):
         try:
-            author = await asyncio.wait_for(self.repo.get_by_id(author_id), timeout=2.0)
+            with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=2.0)):
+                author = await self.repo.get_by_id(author_id)
         except asyncio.TimeoutError:
             print("Repo timed out")
             return None
