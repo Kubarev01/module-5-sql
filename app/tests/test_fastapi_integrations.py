@@ -6,6 +6,18 @@ from httpx import AsyncClient
 from httpx._transports.asgi import ASGITransport
 
 book_id = 35
+
+import fakeredis.aioredis as fakeredis
+import app.repositories.book_repository as br
+
+import pytest
+
+@pytest.fixture(autouse=True, scope="module")
+def _fake_redis(monkeypatch):
+    fake = fakeredis.FakeRedis()
+    monkeypatch.setattr(br, "redis", fake)
+    return fake
+
 class FakeDbSession:
     async def execute(self, sql, *args, **kwargs):
         class FakeResult:
