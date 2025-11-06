@@ -5,6 +5,7 @@ from routers.review import router as review_router
 from routers.common import router as common_router
 from routers.inventory import router as inventory_router
 from routers.authors import router as author_router
+from routers.orders import router as order_router
 
 from services.background_service import cache_invalidator
 import asyncio
@@ -18,6 +19,7 @@ app.include_router(review_router)
 app.include_router(author_router)
 app.include_router(common_router)
 app.include_router(inventory_router)
+app.include_router(order_router)
 
 @app.get("/")
 async def root():

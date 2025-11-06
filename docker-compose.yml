@@ -52,6 +52,7 @@ services:
       - "15672:15672"
     restart: always
 
+
 volumes:
   postgres_data:
   mongo_data:
