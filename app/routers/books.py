@@ -1,5 +1,5 @@
 from fastapi import HTTPException, status, Depends, APIRouter
-
+from fastapi.background import BackgroundTasks
 from database.redis_client import redis_client as redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -69,10 +69,13 @@ async def create_book_with_author(new_book: BookSchema, new_author: AuthorSchema
         raise HTTPException(status_code=400, detail="Ошибка при создании книги")
     return {"status":"success","msg":"Книга с автором добавлена","book": created_book, "author": new_author}
 
-@router.get("/{book_id}",summary = "Просмотр книг")
-async def get_book(book_id: int, db: AsyncSession = Depends(get_db_session)):
-    
-    book = await service.get_by_id(book_id)
+@router.get("/{book_id}", summary="Просмотр книг")
+async def get_book(
+    book_id: int,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db_session),
+):
+    book = await service.get_by_id(book_id, background_tasks)
 
     if book:
         return book
