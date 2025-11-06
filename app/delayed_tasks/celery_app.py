@@ -19,12 +19,13 @@ celery_app.conf.update(
     task_acks_late=True,     
     task_reject_on_worker_lost=True,
     timezone="UTC",
-    beat_schedule={
-        "every-5-seconds": {
-            "task": "delayed_tasks.worker_service.process_order",
-            "schedule": 5.0,
-            "args": (),
-        }
-    }
     enable_utc=True
 )
+
+celery_app.conf.beat_schedule = {
+    "nightly-report-every-5-min":{
+        "task": "delayed_tasks.worker_service.nightly_report",
+        "schedule": 5*60,
+        "args": (),
+    }
+}

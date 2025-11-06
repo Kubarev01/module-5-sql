@@ -3,7 +3,7 @@ import time
 from delayed_tasks.celery_app import celery_app
 
 
-@celery_app.task(name="process_order",bind=True)
+@celery_app.task(name="process_order",bind = True, )
 def process_order(self,order_id: int):
     try:
         print(f"[process_order] Начинаю обработку заказа {order_id}")
@@ -18,3 +18,12 @@ def process_order(self,order_id: int):
             f"Попытка {self.request.retries + 1} из {3}"
         )
         raise self.retry(exc=exc,max_retries=3,countdown=5)
+
+
+
+@celery_app.task(name="nightly_report",bind = True)
+def nightly_report(self):
+    print("[nightly_report] Sending nightly report")
+    time.sleep(10)
+    print("[nightly_report] Report sent")
+    return {"status": "completed"}
