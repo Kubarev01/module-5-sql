@@ -16,6 +16,15 @@ celery_app.conf.update(
     task_serializer="json",
     result_serializer="json",
     accept_content=["json"],
+    task_acks_late=True,     
+    task_reject_on_worker_lost=True,
     timezone="UTC",
-    enable_utc=True,
+    beat_schedule={
+        "every-5-seconds": {
+            "task": "delayed_tasks.worker_service.process_order",
+            "schedule": 5.0,
+            "args": (),
+        }
+    }
+    enable_utc=True
 )
