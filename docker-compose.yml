@@ -52,6 +52,17 @@ services:
       - "15672:15672"
     restart: always
 
+  celery_worker:
+    build: ./app
+    container_name: celery_worker
+    command: celery -A delayed_tasks.worker_service.celery_app worker --loglevel=info
+    depends_on:
+      - rabbbitmq
+    environment:
+      CELERY_BROKER_URL: amqp://guest:guest@rabbbitmq:5672//
+      CELERY_RESULT_BACKEND: rpc://
+    restart: always
+
 
 volumes:
   postgres_data:
