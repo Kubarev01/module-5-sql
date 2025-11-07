@@ -21,7 +21,7 @@ def create_consumer() -> Consumer:
         "bootstrap.servers": "kafka:9092",
         "group.id": "analytics",
         "auto.offset.reset": "earliest", 
-        "enable.auto.commit": True,
+        "enable.auto.commit": False,
     }
 
     return Consumer(config)
@@ -70,6 +70,7 @@ class AnaliticsWorker:
 
                     try:
                         self._save_event(payload)
+                        self.consumer.commit(message=msg, asynchronous=True)
                     except Exception as e:
                         print(f"[AnalyticsWorker] Error saving event to MongoDB: {e}")
 
