@@ -115,6 +115,13 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
 
+  analytics_worker:
+      build: ./app
+      command: python -m kafka_client.analitics_worker_runner
+      depends_on:
+        - kafka
+        - mongodb
+
 volumes:
   postgres_data:
   mongo_data:
