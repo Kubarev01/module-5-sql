@@ -1,12 +1,14 @@
 aiobreaker==1.2.0
 aiohappyeyeballs==2.6.1
 aiohttp==3.13.2
+aiokafka==0.12.0
 aiosignal==1.4.0
 alembic==1.17.0
 amqp==5.3.1
 annotated-doc==0.0.3
 annotated-types==0.7.0
 anyio==4.11.0
+async-timeout==5.0.1
 asyncpg==0.30.0
 attrs==25.4.0
 backoff==2.2.1

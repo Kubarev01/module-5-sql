@@ -116,11 +116,11 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
 
   analytics_worker:
-      build: ./app
-      command: python -m kafka_client.analitics_worker_runner
-      depends_on:
-        - kafka
-        - mongodb
+    build: ./app
+    command: bash -c "sleep 45 && python -m kafka_client.analitics_worker_runner"
+    depends_on:
+      - kafka
+      - mongodb
 
 volumes:
   postgres_data:
