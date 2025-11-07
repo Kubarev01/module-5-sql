@@ -1,7 +1,17 @@
 import os
 import json
 import threading
+import asyncio
 from confluent_kafka import Consumer, KafkaException, KafkaError
+from motor.motor_asyncio import AsyncIOMotorClient
+from database.mongo_client import db
+from pymongo import MongoClient
+
+
+MONGO_URI = os.getenv("MONGO_URL", "mongodb://mongodb:27017")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "mydatabase")
+
+
 
 
 
@@ -17,11 +27,23 @@ def create_consumer() -> Consumer:
     return Consumer(config)
 
 class AnaliticsWorker:
+
+    #синхронный для аналитики
+    _mongo_client = MongoClient(MONGO_URI)
+    _mongo_db = _mongo_client[MONGO_DB_NAME]
+
+
     def __init__(self, topic: str = "book_views"):
         self.consumer = create_consumer()
         self.topic = topic
         self._stop_flag = False
-        self._thread: threading.Thread|None = None
+        self._thread: threading.Thread| None = None
+        self.mongo_db = db
+        self.collection = self._mongo_db["book_views"]
+    
+    def _save_event(self, payload: dict) -> None:
+       # сохраняем событие в mongo
+       self.collection.insert_one(payload)
 
     def _loop(self):
         print(f"[AnalyticsWorker] Subscribing to topic: {self.topic}")
@@ -37,11 +59,26 @@ class AnaliticsWorker:
                     elif msg.error():
                         print(f"ERROR: {msg.error()}")
                 else:
+                   
+                    value_bytes = msg.value()
+                    try:
+                        payload = json.loads(value_bytes.decode("utf-8"))
+                    except Exception as e:
+                        print(f"[AnalyticsWorker] Error decoding message: {e}, raw message: {value_bytes}")
+                        continue
                     print(f"Consumed record with key {msg.key()} and value {msg.value()}")
+
+                    try:
+                        self._save_event(payload)
+                    except Exception as e:
+                        print(f"[AnalyticsWorker] Error saving event to MongoDB: {e}")
+
         except KafkaException as e:
             print(f"[AnalyticsWorker] KafkaException: {e}")
         finally:
             print("[AnalyticsWorker] Closing consumer...")
+            
+
             self.consumer.close()
 
     def start(self):
