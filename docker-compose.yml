@@ -122,6 +122,13 @@ services:
       - kafka
       - mongodb
 
+  faust_analytics:
+    build: ./app
+    command: bash -c "sleep 45 && faust -A faust_analytics worker -l info"
+    depends_on:
+      - kafka
+    restart: always
+
 volumes:
   postgres_data:
   mongo_data:
