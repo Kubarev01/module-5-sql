@@ -1,0 +1,22 @@
+from fastapi import FastAPI, HTTPException
+import httpx
+import os
+
+app = FastAPI(title="API Gateway")
+
+BOOK_SERVICE_URL = "http://book-service:8000"
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "gateway"}
+
+@app.get("/books/{book_id}")
+async def get_book(book_id: int):
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(f"{BOOK_SERVICE_URL}/books/{book_id}")
+        resp.raise_for_status()
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"book-service error: {e!r}")
+    return resp.json()
