@@ -129,6 +129,12 @@ services:
       - kafka
     restart: always
 
+  zipkin:
+    image: openzipkin/zipkin
+    container_name: zipkin
+    ports:
+      - "9411:9411"
+
 volumes:
   postgres_data:
   mongo_data:

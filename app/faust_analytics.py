@@ -7,7 +7,7 @@ app = faust.App(
 
 class BookView(faust.Record):
     book_id: str
-    views: int = 1  # значение по умолчанию
+    views: int = 1  
 
 topic = app.topic('book_views', value_type=BookView)
 views_per_book = app.Table('views_per_book', default=int)
