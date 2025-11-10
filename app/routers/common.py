@@ -10,7 +10,7 @@ router = APIRouter()
 book_repo = BookRepository()
 review_repo = ReviewsRepository()
 
-@router.get("/api/products/{product_id}/details", summary="Получить детали продукта (книги и отзывы)", tags=["Общие"])
+@router.get("/{product_id}/details", summary="Получить детали продукта (книги и отзывы)", tags=["Общие"])
 async def get_product_details(product_id: int):
  
     book_task = book_repo.get_by_id(product_id)

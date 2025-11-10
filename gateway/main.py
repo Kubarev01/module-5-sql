@@ -22,3 +22,13 @@ async def get_book(book_id: int, user = Depends(verify_token)):
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"book-service error: {e!r}")
     return resp.json()
+
+@app.get("/{book_id}/details")
+async def get_detail_book(book_id:int , user = Depends(verify_token)):
+    try:
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            resp = await client.get(f"{BOOK_SERVICE_URL}/{book_id}/details/")
+        resp.raise_for_status()
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"book-service error: {e!r}")
+    return resp.json()
