@@ -12,9 +12,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  app:
+  book-service:
     build: ./app
-    container_name: fastapi_app
+    container_name: book-service
     command: uvicorn main:app --app-dir /app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./app:/app:cached
@@ -23,6 +23,7 @@ services:
     depends_on:
       - kafka
       - db
+      - redis
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       DATABASE_URL: postgresql+asyncpg://myuser:mypassword@db:5432/mydatabase
@@ -54,9 +55,9 @@ services:
       - "15672:15672"
     restart: always
 
-  celery_worker:
+  order-worker:
     build: ./app
-    container_name: celery_worker
+    container_name: order-worker
     command: celery -A delayed_tasks.worker_service.celery_app worker --loglevel=info
     depends_on:
       - rabbbitmq
@@ -115,7 +116,7 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
 
-  analytics_worker:
+  analytics-worker:
     build: ./app
     command: bash -c "sleep 45 && python -m kafka_client.analitics_worker_runner"
     depends_on:
