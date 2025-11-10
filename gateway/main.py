@@ -1,6 +1,8 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 import httpx
 import os
+
+from auth import verify_token
 
 app = FastAPI(title="API Gateway")
 
@@ -12,7 +14,7 @@ async def health():
     return {"status": "ok", "service": "gateway"}
 
 @app.get("/books/{book_id}")
-async def get_book(book_id: int):
+async def get_book(book_id: int, user = Depends(verify_token)):
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(f"{BOOK_SERVICE_URL}/books/{book_id}")

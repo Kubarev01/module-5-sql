@@ -75,6 +75,8 @@ services:
       - book-service
     environment:
       BOOK_SERVICE_URL: http://book-service:8000
+      JWT_SECRET_KEY: secretexample
+      JWT_ALGORITHM: HS256
     restart: always
 
   celery_beat:
