@@ -75,7 +75,7 @@ async def health():
 
 
 @app.get("/books/{book_id}")
-async def get_book(book_id: int, user=Depends(verify_token)):
+async def get_book(book_id: int):
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(f"{BOOK_SERVICE_URL}/books/{book_id}")
@@ -86,7 +86,7 @@ async def get_book(book_id: int, user=Depends(verify_token)):
 
 
 @app.get("/{book_id}/details")
-async def get_detail_book(book_id: int, user=Depends(verify_token)):
+async def get_detail_book(book_id: int):
     try:
         async with httpx.AsyncClient(follow_redirects=True) as client:
             resp = await client.get(f"{BOOK_SERVICE_URL}/{book_id}/details/")
@@ -107,7 +107,7 @@ class BookSchema(BaseSchema):
 
 
 @app.post("/books")
-async def create_book(book_schema: BookSchema, user=Depends(verify_token)):
+async def create_book(book_schema: BookSchema):
     try:
         async with httpx.AsyncClient(follow_redirects=True) as client:
             resp = await client.post(f"{BOOK_SERVICE_URL}/books/", json=book_schema.dict())

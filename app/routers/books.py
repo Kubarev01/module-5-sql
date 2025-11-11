@@ -8,6 +8,7 @@ from database.postgres_client import get_db_session
 from schemas import BookSchema, AuthorSchema
 from database.redis_client import redis_client as redis
 from services.book_service import BookService
+from metrics import book_created_counter
 
 repo = BookRepository()
 service = BookService(repo, redis)
@@ -53,6 +54,12 @@ async def create_book(new_book:BookSchema,db: AsyncSession = Depends(get_db_sess
 
     if not created_book:
         raise HTTPException(status_code=400, detail="Ошибка при создании книги")
+    book_created_counter.add(
+        1,
+        attributes={
+            "service": "book-service",  
+        },
+    )
     return created_book
 
 @router.post('/with-author', summary="Создание книги с автором", status_code=status.HTTP_201_CREATED)
