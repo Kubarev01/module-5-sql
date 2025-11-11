@@ -89,3 +89,5 @@ vine==5.1.0
 wcwidth==0.2.14
 wrapt==2.0.0
 yarl==1.22.0
+opentelemetry-distro
+opentelemetry-exporter-otlp
