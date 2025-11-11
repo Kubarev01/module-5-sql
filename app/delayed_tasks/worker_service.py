@@ -3,6 +3,7 @@ import time
 from delayed_tasks.celery_app import celery_app
 
 
+
 @celery_app.task(name="process_order",bind = True, )
 def process_order(self,order_id: int):
     try:

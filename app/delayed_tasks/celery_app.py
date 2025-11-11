@@ -1,9 +1,34 @@
 from celery import Celery
 
+from celery import Celery
+from opentelemetry.instrumentation.celery import CeleryInstrumentor
+
+
 
 BROKER_URL = "amqp://guest:guest@rabbbitmq:5672//"
 
 RESULT_BACKEND = "rpc://"
+from opentelemetry import trace
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.zipkin.json import ZipkinExporter
+from opentelemetry.semconv.resource import ResourceAttributes
+from opentelemetry.instrumentation.pymongo import PymongoInstrumentor
+
+resource = Resource(
+    attributes={ResourceAttributes.SERVICE_NAME: "analytics-worker"}
+)
+
+provider = TracerProvider(resource=resource)
+exporter = ZipkinExporter(endpoint="http://zipkin:9411/api/v2/spans")
+provider.add_span_processor(BatchSpanProcessor(exporter))
+trace.set_tracer_provider(provider)
+
+tracer = trace.get_tracer(__name__)
+
+# Подсветить Mongo
+PymongoInstrumentor().instrument()
 
 celery_app = Celery(
     "my_app",  
@@ -11,6 +36,10 @@ celery_app = Celery(
     backend=RESULT_BACKEND,
 
 )
+
+CeleryInstrumentor().instrument()
+
+
 
 celery_app.conf.update(
     task_serializer="json",

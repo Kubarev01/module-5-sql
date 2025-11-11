@@ -87,7 +87,19 @@ uvicorn==0.38.0
 venusian==3.1.0
 vine==5.1.0
 wcwidth==0.2.14
-wrapt==2.0.0
+wrapt==1.15.0
 yarl==1.22.0
-opentelemetry-distro
-opentelemetry-exporter-otlp
+# OpenTelemetry core
+opentelemetry-api==1.20.0
+opentelemetry-sdk==1.20.0
+
+# Zipkin exporter (метапакет, сам подтягивает zipkin-json/proto-http)
+opentelemetry-exporter-zipkin-json==1.20.0
+
+# Instrumentation
+opentelemetry-instrumentation==0.41b0
+opentelemetry-instrumentation-fastapi==0.41b0
+opentelemetry-instrumentation-httpx==0.41b0
+opentelemetry-instrumentation-sqlalchemy==0.41b0
+opentelemetry-instrumentation-celery==0.41b0
+opentelemetry-instrumentation-pymongo==0.41b0 

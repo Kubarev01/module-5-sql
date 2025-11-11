@@ -28,7 +28,7 @@ services:
   book-service:
     build: ./app
     container_name: book-service
-    command: uvicorn main:app --app-dir /app --host 0.0.0.0 --port 8000 --reload
+    command: opentelemetry-instrument uvicorn main:app --app-dir /app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./app:/app:cached
     ports:
@@ -42,14 +42,20 @@ services:
       DATABASE_URL: postgresql+asyncpg://myuser:mypassword@db:5432/mydatabase
       PYTHONPATH: /app
       PYTHONUNBUFFERED: "1"
+      OTEL_SERVICE_NAME: book-service
+      OTEL_TRACES_EXPORTER: zipkin
+      OTEL_EXPORTER_ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      OTEL_METRICS_EXPORTER: "none"
     restart: on-failure
     labels:
       - "traefik.enable=true"
       # роутер: все запросы на / идут в book-service
-      - "traefik.http.routers.book-service.rule=PathPrefix(`/`)"
-      - "traefik.http.routers.book-service.entrypoints=web"
+      - "traefik.http.routers.gateway.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.gateway.entrypoints=web"
       # говорим Traefik, какой порт внутри контейнера слушает сервис
-      - "traefik.http.services.book-service.loadbalancer.server.port=8000"
+      - "traefik.http.services.book-gateway.loadbalancer.server.port=8000"
+    
+    
   
   redis:
     image: redis:alpine
@@ -85,29 +91,34 @@ services:
       CELERY_BROKER_URL: amqp://guest:guest@rabbbitmq:5672//
       CELERY_RESULT_BACKEND: rpc://
     restart: always
-  # gateway:
-  #   build: ./gateway
-  #   container_name: api_gateway
-  #   command: uvicorn main:app --host 0.0.0.0 --port 8000
-  #   ports:
-  #     - "8080:8000"        # снаружи 8080, внутри контейнера 8000 (чтоб не конфликтовать с book-service)
-  #   depends_on:
-  #     - book-service
-  #   environment:
-  #     BOOK_SERVICE_URL: http://book-service:8000
-  #     JWT_SECRET_KEY: secretexample
-  #     JWT_ALGORITHM: HS256
-  #   restart: always
+  gateway:
+    build: ./gateway
+    container_name: api_gateway
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    depends_on:
+      - book-service
+    ports:
+      - "8001:8000"
+    environment:
+      BOOK_SERVICE_URL: http://book-service:8000
+      JWT_SECRET_KEY: secretexample
+      JWT_ALGORITHM: HS256
+    restart: always
 
   celery_beat:
     build: ./app
     container_name: celery_beat
-    command: celery -A delayed_tasks.worker_service.celery_app beat --loglevel=info
+    command: opentelemetry-instrument celery -A delayed_tasks.worker_service.celery_app beat --loglevel=info
     depends_on:
       - rabbbitmq
     environment:
       CELERY_BROKER_URL: amqp://guest:guest@rabbbitmq:5672//
       CELERY_RESULT_BACKEND: rpc://
+
+      OTEL_SERVICE_NAME: order-worker
+      OTEL_TRACES_EXPORTER: zipkin
+      OTEL_EXPORTER_ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      OTEL_METRICS_EXPORTER: "none"
     restart: always
   
   flower:

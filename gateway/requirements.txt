@@ -2,5 +2,18 @@ fastapi
 uvicorn[standard]
 httpx
 PyJWT
-opentelemetry-distro
-opentelemetry-exporter-otlp
+pydantic
+# OpenTelemetry core
+opentelemetry-api==1.20.0
+opentelemetry-sdk==1.20.0
+
+# Zipkin exporter (метапакет, сам подтягивает zipkin-json/proto-http)
+opentelemetry-exporter-zipkin==1.20.0
+
+# Instrumentation
+opentelemetry-instrumentation==0.41b0
+opentelemetry-instrumentation-fastapi==0.41b0
+opentelemetry-instrumentation-httpx==0.41b0
+opentelemetry-instrumentation-sqlalchemy==0.41b0
+opentelemetry-instrumentation-celery==0.41b0
+opentelemetry-instrumentation-pymongo==0.41b0 
