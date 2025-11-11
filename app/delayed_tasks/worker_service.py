@@ -1,30 +1,57 @@
-# worker_service.py
 import time
+
 from delayed_tasks.celery_app import celery_app
 
+import structlog
+from logging_config import setup_logging
+setup_logging("order-worker")
+log = structlog.get_logger(service="order-worker")
 
 
-@celery_app.task(name="process_order",bind = True, )
-def process_order(self,order_id: int):
+@celery_app.task(name="process_order", bind=True)
+def process_order(self, order_id: int):
+    max_retries = 3
+
     try:
-        print(f"[process_order] Начинаю обработку заказа {order_id}")
-        time.sleep(10)  
-        if order_id == 42:
-            raise Exception("Симуляция падения БД")
-        print(f"[process_order] Заказ {order_id} обработан")
-        return {"status": "completed", "order_id": order_id}
-    except Exception as exc:
-        print(
-            f"[process_order] Ошибка при обработке заказа {order_id}: {exc}. "
-            f"Попытка {self.request.retries + 1} из {3}"
+        log.info(
+            "process_order_start",
+            order_id=order_id,
         )
-        raise self.retry(exc=exc,max_retries=3,countdown=5)
+
+        time.sleep(10)
+
+        if order_id == 42:
+            # Симуляция падения БД
+            raise Exception("db_failure_simulation")
+
+        log.info(
+            "process_order_completed",
+            order_id=order_id,
+        )
+
+        return {"status": "completed", "order_id": order_id}
+
+    except Exception as exc:
+        attempt = self.request.retries + 1
+
+        log.error(
+            "process_order_error",
+            order_id=order_id,
+            error=str(exc),
+            attempt=attempt,
+            max_retries=max_retries,
+        )
+
+        # retry оставляем как есть
+        raise self.retry(exc=exc, max_retries=max_retries, countdown=5)
 
 
-
-@celery_app.task(name="nightly_report",bind = True)
+@celery_app.task(name="nightly_report", bind=True)
 def nightly_report(self):
-    print("[nightly_report] Sending nightly report")
+    log.info("nightly_report_start")
+
     time.sleep(10)
-    print("[nightly_report] Report sent")
+
+    log.info("nightly_report_completed")
+
     return {"status": "completed"}

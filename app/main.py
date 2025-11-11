@@ -26,6 +26,13 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.exporter.prometheus import PrometheusMetricReader
 
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from logging_config import setup_logging
+import structlog
+
+# ---- ЛОГИ ----
+setup_logging("book-service")
+log = structlog.get_logger(service="book-service")
+
 
 SQLAlchemyInstrumentor().instrument(engine=engine.sync_engine)
 

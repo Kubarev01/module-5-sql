@@ -14,6 +14,12 @@ from opentelemetry.semconv.resource import ResourceAttributes
 from opentelemetry.propagate import extract
 from opentelemetry.instrumentation.pymongo import PymongoInstrumentor
 
+import structlog
+from logging_config import setup_logging
+
+# ---- ЛОГИ ----
+setup_logging("analytics-worker")
+log = structlog.get_logger(service="analytics-worker")
 
 # --- Инициализация OTEL для analytics-worker ---
 resource = Resource(
@@ -85,7 +91,6 @@ class AnaliticsWorker:
         self.bootstrap_servers = bootstrap_servers or "kafka:9092"
         self.group_id = group_id
 
-        # MongoDB клиент
         self._mongo_client = AsyncIOMotorClient("mongodb://mongodb:27017")
         self._mongo_db = self._mongo_client["mydatabase"]
         self.collection = self._mongo_db["book_views"]
@@ -94,28 +99,38 @@ class AnaliticsWorker:
         self._task: asyncio.Task | None = None
         self._stopping = False
 
+        log.info(
+            "analytics_worker_initialized",
+            topic=self.topic,
+            bootstrap_servers=self.bootstrap_servers,
+            group_id=self.group_id,
+        )
+
     async def _save_event(self, payload: dict) -> None:
         await self.collection.insert_one(payload)
 
     async def _loop(self):
-        print(f"[AnalyticsWorker] Subscribing to topic: {self.topic}")
+        log.info(
+            "analytics_worker_subscribing",
+            topic=self.topic,
+        )
 
         try:
             consumer = self._consumer
             if consumer is None:
-                print("[AnalyticsWorker] Consumer is None, stopping loop")
+                log.error("analytics_worker_consumer_none_stopping_loop")
                 return
 
             async for msg in consumer:
                 if self._stopping:
+                    log.info("analytics_worker_stopping_flag_set_break_loop")
                     break
 
-                # ==== Восстанавливаем trace-контекст из Kafka headers ====
+                
                 carrier = msg.headers or []
                 ctx = extract(carrier, getter=kafka_headers_getter)
 
-                # ==== Обработка события ====
-                # Span вокруг обработки события
+           
                 with tracer.start_as_current_span(
                     "analytics_process_book_event",
                     context=ctx,
@@ -127,29 +142,54 @@ class AnaliticsWorker:
                     try:
                         payload = json.loads(msg.value.decode("utf-8"))
                     except Exception as e:
-                        print(f"[AnalyticsWorker] Error decoding message: {e}")
+                        log.error(
+                            "analytics_worker_error_decoding_message",
+                            error=str(e),
+                            topic=msg.topic,
+                            partition=msg.partition,
+                            offset=msg.offset,
+                        )
                         span.record_exception(e)
                         span.set_attribute("error", True)
                         continue
 
-                    print(f"[AnalyticsWorker] Received message: {payload}")
+                    log.info(
+                        "analytics_worker_received_message",
+                        payload=payload,
+                        topic=msg.topic,
+                        partition=msg.partition,
+                        offset=msg.offset,
+                    )
 
                     try:
                         await self._save_event(payload)
-                        # Явный commit после успешной обработки
                         await consumer.commit()
+                        log.info(
+                            "analytics_worker_message_processed_and_committed",
+                            topic=msg.topic,
+                            partition=msg.partition,
+                            offset=msg.offset,
+                        )
                     except Exception as e:
-                        print(f"[AnalyticsWorker] Error saving event: {e}")
+                        log.error(
+                            "analytics_worker_error_saving_event",
+                            error=str(e),
+                            payload=payload,
+                        )
                         span.record_exception(e)
                         span.set_attribute("error", True)
 
         except asyncio.CancelledError:
-            print("[AnalyticsWorker] Loop cancelled")
+            log.info("analytics_worker_loop_cancelled")
         except Exception as e:
-            print(f"[AnalyticsWorker] Consumer loop error: {e}")
+            log.error(
+                "analytics_worker_consumer_loop_error",
+                error=str(e),
+            )
 
     async def start(self):
         if self._consumer is not None:
+            log.warning("analytics_worker_start_called_but_consumer_already_exists")
             return
 
         self._stopping = False
@@ -169,45 +209,60 @@ class AnaliticsWorker:
             for attempt in range(max_retries):
                 try:
                     await self._consumer.start()
-                    print("[AnalyticsWorker] Started successfully")
+                    log.info(
+                        "analytics_worker_started_successfully",
+                        attempt=attempt + 1,
+                    )
                     break
                 except Exception as e:
                     if attempt < max_retries - 1:
-                        print(
-                            f"[AnalyticsWorker] Connection attempt {attempt + 1} failed "
-                            f"({e}), retrying..."
+                        log.warning(
+                            "analytics_worker_connection_attempt_failed_retrying",
+                            attempt=attempt + 1,
+                            max_retries=max_retries,
+                            error=str(e),
+                            retry_delay=retry_delay,
                         )
                         await asyncio.sleep(retry_delay)
                     else:
-                        print(
-                            f"[AnalyticsWorker] Failed to connect after {max_retries} attempts: {e}"
+                        log.error(
+                            "analytics_worker_failed_to_connect_after_max_retries",
+                            max_retries=max_retries,
+                            error=str(e),
                         )
                         self._consumer = None
                         return
 
             if self._consumer is not None:
                 self._task = asyncio.create_task(self._loop())
+                log.info("analytics_worker_loop_task_started")
 
         except Exception as e:
-            print(f"[AnalyticsWorker] Error during startup: {e}")
+            log.error(
+                "analytics_worker_error_during_startup",
+                error=str(e),
+            )
             self._consumer = None
 
     async def stop(self):
         self._stopping = True
+        log.info("analytics_worker_stop_requested")
 
         if self._task is not None:
             self._task.cancel()
             try:
                 await self._task
             except asyncio.CancelledError:
-                pass
+                log.info("analytics_worker_task_cancelled")
             self._task = None
 
         if self._consumer is not None:
             await self._consumer.stop()
+            log.info("analytics_worker_consumer_stopped")
             self._consumer = None
 
-        # Закрываем Mongo-клиент
+      
         self._mongo_client.close()
+        log.info("analytics_worker_mongo_client_closed")
 
-        print("[AnalyticsWorker] Stopped")
+        log.info("analytics_worker_stopped")

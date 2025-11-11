@@ -105,3 +105,5 @@ opentelemetry-instrumentation-celery==0.41b0
 opentelemetry-instrumentation-pymongo==0.41b0 
 
 opentelemetry-exporter-prometheus==0.41b0
+
+structlog==24.4.0
