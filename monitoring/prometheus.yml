@@ -1,0 +1,19 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: "book-service"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["book-service:8000"]
+
+  - job_name: "gateway"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api_gateway:8000"]
+
+  - job_name: "celery-flower"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["celery_flower:5555"]
