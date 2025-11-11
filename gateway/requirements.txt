@@ -2,3 +2,5 @@ fastapi
 uvicorn[standard]
 httpx
 PyJWT
+opentelemetry-distro
+opentelemetry-exporter-otlp
