@@ -37,16 +37,15 @@ def send_book_event(payload: dict, topic: str = "book_views") -> None:
     """
     value_bytes = json.dumps(payload).encode("utf-8")
 
-    # Span вокруг отправки сообщения
+   
     with tracer.start_as_current_span("kafka_send_book_event") as span:
         span.set_attribute("messaging.system", "kafka")
         span.set_attribute("messaging.destination", topic)
 
-        # Подготовим carrier и положим туда текущий OTEL-контекст
+        
         carrier: Dict[str, str] = {}
         inject(carrier)
 
-        # Kafka headers: список пар (key, value_bytes)
         headers = [(k, v.encode("utf-8")) for k, v in carrier.items()]
 
         producer.produce(
@@ -56,7 +55,7 @@ def send_book_event(payload: dict, topic: str = "book_views") -> None:
             callback=_delivery_report,
         )
 
-        # Ждём, пока буфер отправится
+
         producer.flush()
 
 

@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Response
 import httpx
 import os
 from auth import verify_token
@@ -15,12 +15,35 @@ from opentelemetry.sdk.trace.export import (
     SimpleSpanProcessor,
     ConsoleSpanExporter,
 )
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.exporter.prometheus import PrometheusMetricReader
+from opentelemetry import metrics
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
+# ====== METRICS SETUP ======
 resource = Resource(
     attributes={
         ResourceAttributes.SERVICE_NAME: "gateway",
     }
 )
+
+prom_reader = PrometheusMetricReader()
+
+meter_provider = MeterProvider(metric_readers=[prom_reader])
+metrics.set_meter_provider(meter_provider)
+
+meter = metrics.get_meter(__name__)
+
+# пример собственной метрики (не обязательно, просто для проверки)
+request_counter = meter.create_counter(
+    name="gateway_requests_total",
+    description="Total number of requests to gateway",
+)
+request_duration_hist = meter.create_histogram(
+    name="gateway_request_duration_ms",
+    description="Duration of gateway requests in milliseconds",
+)
+# ====== END METRICS SETUP ======
 
 trace_provider = TracerProvider(resource=resource)
 
@@ -92,3 +115,8 @@ async def create_book(book_schema: BookSchema, user=Depends(verify_token)):
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"book-service error: {e!r}")
     return resp.json()
+
+@app.get("/metrics")
+async def metrics_endpoint():
+    data = generate_latest(prom_reader._collector)
+    return Response(content=data, media_type=CONTENT_TYPE_LATEST)
