@@ -21,7 +21,7 @@ trace.set_tracer_provider(provider)
 
 tracer = trace.get_tracer(__name__)
 
-MONGO_URL = os.getenv("MONGO_URL", "mongodb://mongodb:27017")
+MONGO_URL = os.getenv("MONGO_URL")
 
 mongo_client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URL)
 

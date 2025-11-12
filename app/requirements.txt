@@ -59,6 +59,7 @@ protobuf==6.33.0
 psycopg2-binary==2.9.11
 pybreaker==1.4.1
 pydantic==2.12.3
+python-dotenv
 pydantic_core==2.41.4
 Pygments==2.19.2
 pymongo==4.15.3
