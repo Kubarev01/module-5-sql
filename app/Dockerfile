@@ -1,4 +1,3 @@
-
 FROM python:3.11-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -13,7 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-COPY requirements.txt .
+# requirements лежит в ./app/requirements.txt относительно корня проекта
+COPY app/requirements.txt ./requirements.txt
 
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
@@ -29,8 +29,10 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-COPY . .
+# ВАЖНО: копируем содержимое папки app в /app
+COPY app/ .
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--app-dir", "/app", "--host", "0.0.0.0", "--port", "8000"]
+# main.py теперь реально лежит в /app/main.py
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

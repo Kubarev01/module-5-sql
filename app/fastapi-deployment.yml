@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi-book-service
+  labels:
+    app: fastapi-book-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fastapi-book-service
+  template:
+    metadata:
+      labels:
+        app: fastapi-book-service
+    spec:
+      containers:
+        - name: fastapi-book-service
+          image: fastapi-book-service:k8s
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: book-service-config     
+            - secretRef:
+                name: postgres-secret          
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastapi-book-service
+  labels:
+    app: fastapi-book-service
+spec:
+  type: ClusterIP
+  selector:
+    app: fastapi-book-service
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
