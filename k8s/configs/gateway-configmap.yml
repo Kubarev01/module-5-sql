@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+  namespace: default
+data:
+  BOOK_SERVICE_URL: http://fastapi-book-service.default.svc.cluster.local:8000
+  ZIPKIN_ENDPOINT: http://zipkin.default.svc.cluster.local:9411/api/v2/spans

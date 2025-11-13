@@ -1,0 +1,197 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: book-service
+  labels:
+    app: book-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: book-service
+  template:
+    metadata:
+      labels:
+        app: book-service
+    spec:
+      containers:
+        - name: book-service
+          image: fastapi-book-service:k8s
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: book-service-config
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: book-service
+  labels:
+    app: book-service
+spec:
+  type: ClusterIP
+  selector:
+    app: book-service
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  labels:
+    app: gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+    spec:
+      containers:
+        - name: gateway
+          image: fastapi-gateway:k8s
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: gateway-config
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  labels:
+    app: gateway
+spec:
+  type: ClusterIP
+  selector:
+    app: gateway
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-worker
+  labels:
+    app: order-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: order-worker
+  template:
+    metadata:
+      labels:
+        app: order-worker
+    spec:
+      containers:
+        - name: order-worker
+          image: order-worker:k8s
+          imagePullPolicy: IfNotPresent
+          command: ["celery"]
+          args: ["-A", "delayed_tasks.worker_service.celery_app", "worker", "--loglevel=info"]
+          envFrom:
+            - configMapRef:
+                name: celery-worker-config
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-worker
+  labels:
+    app: analytics-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: analytics-worker
+  template:
+    metadata:
+      labels:
+        app: analytics-worker
+    spec:
+      containers:
+        - name: analytics-worker
+          image: analytics-worker:k8s
+          imagePullPolicy: IfNotPresent
+          command: ["python"]
+          args: ["-m", "kafka_client.analitics_worker_runner"]
+          envFrom:
+            - configMapRef:
+                name: analytics-worker-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-beat
+  labels:
+    app: celery-beat
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: celery-beat
+  template:
+    metadata:
+      labels:
+        app: celery-beat
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: celery-beat
+          image: order-worker:k8s
+          imagePullPolicy: IfNotPresent
+          command: ["bash","-lc"]
+          args:
+            - >
+              celery -A delayed_tasks.worker_service.celery_app
+              beat --loglevel=info
+          envFrom:
+            - configMapRef:
+                name: celery-beat-config
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi

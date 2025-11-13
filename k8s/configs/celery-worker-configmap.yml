@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: celery-worker-config
+  namespace: default
+data:
+  RABBITMQ_HOST: rabbitmq.infra.svc.cluster.local
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_VHOST: "/"
+  CELERY_RESULT_BACKEND: rpc://

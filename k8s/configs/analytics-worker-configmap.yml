@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: analytics-worker-config
+  namespace: default
+data:
+  KAFKA_BOOTSTRAP_SERVERS: my-kafka-kafka-bootstrap.infra.svc.cluster.local:9092
+  MONGODB_URI: mongodb://mongodb.infra.svc.cluster.local:27017
+  ZIPKIN_ENDPOINT: http://zipkin.default.svc.cluster.local:9411/api/v2/spans

@@ -1,4 +1,5 @@
 import json
+import os
 from typing import Any, Dict
 
 from confluent_kafka import Producer
@@ -10,7 +11,7 @@ tracer = trace.get_tracer(__name__)
 
 
 KAFKA_CONFIG: Dict[str, Any] = {
-    "bootstrap.servers": "kafka:9092",
+    "bootstrap.servers":os.getenv("KAFKA_BOOTSTRAP_SERVERS"), 
     "client.id": "book-service-producer",
 }
 

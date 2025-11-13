@@ -1,5 +1,6 @@
 import json
 import asyncio
+import os
 
 import aiokafka
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -88,9 +89,11 @@ class AnaliticsWorker:
         group_id: str = "analytics",
     ):
         self.topic = topic
-        self.bootstrap_servers = bootstrap_servers or "kafka:9092"
         self.group_id = group_id
-
+        self.bootstrap_servers = bootstrap_servers or os.getenv(
+            "KAFKA_BOOTSTRAP_SERVERS",
+            "kafka:9092"
+        )
         self._mongo_client = AsyncIOMotorClient("mongodb://mongodb:27017")
         self._mongo_db = self._mongo_client["mydatabase"]
         self.collection = self._mongo_db["book_views"]
