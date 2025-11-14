@@ -91,6 +91,13 @@ app.include_router(order_router)
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "book-service"}
+
+@app.get("/healthz", include_in_schema=False)
+async def healthz():
+    return {"status": "ok", "service": "book-service"}  
 
 
 # --- /metrics для Prometheus ---
