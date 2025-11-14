@@ -9,6 +9,7 @@ from routers.orders import router as order_router
 
 from services.background_service import cache_invalidator
 import asyncio
+from prometheus_client import CollectorRegistry
 
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.resources import Resource
@@ -99,6 +100,7 @@ def health():
 async def healthz():
     return {"status": "ok", "service": "book-service"}  
 
+registry = CollectorRegistry()
 
 # --- /metrics для Prometheus ---
 @app.get("/metrics")
@@ -107,8 +109,7 @@ def metrics_endpoint() -> Response:
     Эндпоинт, который скрейпает Prometheus.
     Prometheus ходит сюда: book-service:8000/metrics
     """
-    data = generate_latest()  
-    return Response(content=data, media_type=CONTENT_TYPE_LATEST)
+    return Response(generate_latest(registry), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.on_event("startup")
