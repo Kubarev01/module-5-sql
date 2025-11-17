@@ -24,6 +24,19 @@ spec:
           envFrom:
             - configMapRef:
                 name: book-service-config
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: book-service
+            - name: OTEL_TRACES_EXPORTER
+              value: otlp
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: http/protobuf
+            - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+              value: http://jaeger-collector.observability:4318/v1/traces
+            - name: OTEL_TRACES_SAMPLER
+              value: parentbased_always_on
+            - name: OTEL_PROPAGATORS
+              value: tracecontext,baggage
 
           readinessProbe:
             httpGet:
@@ -78,6 +91,19 @@ spec:
           envFrom:
             - configMapRef:
                 name: gateway-config
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: gateway
+            - name: OTEL_TRACES_EXPORTER
+              value: otlp
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: http/protobuf
+            - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+              value: http://jaeger-collector.observability:4318/v1/traces
+            - name: OTEL_TRACES_SAMPLER
+              value: parentbased_always_on
+            - name: OTEL_PROPAGATORS
+              value: tracecontext,baggage
           readinessProbe:
             httpGet:
               path: /health
@@ -131,6 +157,19 @@ spec:
           envFrom:
             - configMapRef:
                 name: celery-worker-config
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: order-worker
+            - name: OTEL_TRACES_EXPORTER
+              value: otlp
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: http/protobuf
+            - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+              value: http://jaeger-collector.observability:4318/v1/traces
+            - name: OTEL_TRACES_SAMPLER
+              value: parentbased_always_on
+            - name: OTEL_PROPAGATORS
+              value: tracecontext,baggage
 
 ---
 apiVersion: apps/v1
@@ -158,6 +197,19 @@ spec:
           envFrom:
             - configMapRef:
                 name: analytics-worker-config
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: analytics-worker
+            - name: OTEL_TRACES_EXPORTER
+              value: otlp
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: http/protobuf
+            - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+              value: http://jaeger-collector.observability:4318/v1/traces
+            - name: OTEL_TRACES_SAMPLER
+              value: parentbased_always_on
+            - name: OTEL_PROPAGATORS
+              value: tracecontext,baggage
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -188,6 +240,19 @@ spec:
           envFrom:
             - configMapRef:
                 name: celery-beat-config
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: celery-beat
+            - name: OTEL_TRACES_EXPORTER
+              value: otlp
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: http/protobuf
+            - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+              value: http://jaeger-collector.observability:4318/v1/traces
+            - name: OTEL_TRACES_SAMPLER
+              value: parentbased_always_on
+            - name: OTEL_PROPAGATORS
+              value: tracecontext,baggage
           resources:
             requests:
               cpu: 50m
