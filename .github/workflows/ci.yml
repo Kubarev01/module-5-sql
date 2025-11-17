@@ -12,9 +12,18 @@ jobs:
     env:
       PYTHONPATH: ${{ github.workspace }}/app:${{ github.workspace }}
       DATABASE_URL: sqlite+aiosqlite:///./ci.db
+
+      # Полностью вырубаем OTel в CI
       OTEL_SDK_DISABLED: "true"
       OTEL_TRACES_EXPORTER: "none"
+      OTEL_METRICS_EXPORTER: "none"
+      OTEL_LOGS_EXPORTER: "none"
       OTEL_PYTHON_DISABLED_INSTRUMENTATIONS: "all"
+
+      # Глушилки именно для вашего кода с Zipkin:
+      ZIPKIN_HOST: ""                       # чтобы не подставлялся default 'zipkin'
+      OTEL_EXPORTER_ZIPKIN_ENDPOINT: ""     # даже если создадут экспортер — без endpoint
+      OTEL_EXPORTER_ZIPKIN_PROTOCOL: "http/json"
 
     steps:
       - name: Checkout
