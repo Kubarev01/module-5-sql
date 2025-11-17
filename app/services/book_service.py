@@ -2,6 +2,8 @@ import asyncio
 import inspect
 import json
 from threading import Thread
+from typing import Any, Optional
+
 from fastapi import BackgroundTasks
 from kafka_client.producer import producer
 
@@ -15,7 +17,7 @@ def _run_coro_in_new_thread(coro):
     def runner():
         try:
             box["res"] = asyncio.run(coro)
-        except BaseException as e:  # пробрасываем любую ошибку
+        except BaseException as e:
             box["err"] = e
 
     t = Thread(target=runner, daemon=True)
@@ -26,27 +28,26 @@ def _run_coro_in_new_thread(coro):
     return box["res"]
 
 
-def _syncify(v):
+def _syncify(v: Any) -> Any:
     """
-    Вернёт значение как есть, а если это awaitable — выполнит его и вернёт результат.
-    Работает даже если текущий поток уже с активным event loop (otel и т.п.).
+    Если v awaitable — выполнить и вернуть результат.
+    Работает даже если в текущем потоке уже есть активный event loop.
     """
     if not inspect.isawaitable(v):
         return v
     try:
-        # если в этом потоке уже есть живой loop — нельзя вызывать asyncio.run
-        asyncio.get_running_loop()
+        asyncio.get_running_loop()  # loop уже запущен в этом потоке
         return _run_coro_in_new_thread(v)
     except RuntimeError:
-        # loop не запущен — можно выполнить напрямую
+        # loop не запущен — можно просто asyncio.run
         return asyncio.run(v)
 
 
-async def _await_maybe(v):
+async def _await_maybe(v: Any) -> Any:
     return await v if inspect.isawaitable(v) else v
 
 
-# ---------- kafka (мягко, без влияния на тесты) ----------
+# ---------- Kafka (мягко, чтобы CI не падал) ----------
 
 def _send_book_view_event(topic: str, book_id: int):
     payload = json.dumps({"book_id": book_id}).encode("utf-8")
@@ -54,7 +55,7 @@ def _send_book_view_event(topic: str, book_id: int):
         producer.produce(topic=topic, value=payload)
         producer.flush()
     except Exception:
-        # в CI брокера нет — просто игнорируем
+        # В CI брокера нет — игнорируем любые ошибки
         pass
 
 
@@ -65,12 +66,11 @@ async def _send_book_view_in_thread(topic: str, book_id: int):
 # ---------- сервис ----------
 
 class BookService:
-    def __init__(self, repo, redis=None):
+    def __init__(self, repo, redis: Optional[Any] = None):
         self.repo = repo
         self.redis = redis
 
-    # ===== СИНХРОННЫЕ методы (для unit-тестов) =====
-
+    # ===== СИНХРОННЫЕ (для unit-тестов) =====
     def create(self, data):
         return _syncify(self.repo.create(data))
 
@@ -79,8 +79,7 @@ class BookService:
 
     def get_by_id(self, book_id: int, background_tasks: BackgroundTasks | None = None):
         """
-        ВАЖНО: этот метод — синхронный, чтобы unit-тесты типа
-        `book = service.get_by_id(1)` НЕ получали корутину.
+        ВАЖНО: синхронный метод — тесты ожидают обычный dict/Pydantic-модель, а не корутину.
         """
         if background_tasks:
             background_tasks.add_task(_send_book_view_in_thread, "book_views", book_id)
@@ -88,7 +87,7 @@ class BookService:
 
     def update_by_id(self, book_id, new_data):
         result = _syncify(self.repo.update_by_id(book_id, new_data))
-        # если получилось, мягко сообщим редису (если есть)
+        # публикуем инвалидацию кэша, если redis задан
         if result and self.redis:
             pub = getattr(self.redis, "publish", None)
             if pub:
@@ -103,8 +102,7 @@ class BookService:
     def delete_by_id(self, book_id):
         return _syncify(self.repo.delete_by_id(book_id))
 
-    # ===== АСИНХРОННЫЕ методы (для FastAPI) =====
-
+    # ===== АСИНХРОННЫЕ (для FastAPI-роутов) =====
     async def create_async(self, data, *, session=None):
         return await _await_maybe(self.repo.create(data, session=session))
 
@@ -113,7 +111,13 @@ class BookService:
             self.repo.create_book_with_author(book_data, author_data, session=session)
         )
 
-    async def get_by_id_async(self, book_id: int, background_tasks: BackgroundTasks | None = None, *, session=None):
+    async def get_by_id_async(
+        self,
+        book_id: int,
+        background_tasks: BackgroundTasks | None = None,
+        *,
+        session=None
+    ):
         if background_tasks:
             background_tasks.add_task(_send_book_view_in_thread, "book_views", book_id)
         return await _await_maybe(self.repo.get_by_id(book_id, session=session))
@@ -135,6 +139,7 @@ class BookService:
         return await _await_maybe(self.repo.delete_by_id(book_id, session=session))
 
 
-# Жёсткая гарантия: get_by_id обязан быть синхронным
-assert not inspect.iscoroutinefunction(BookService.get_by_id), \
+# Жёсткая гарантия: get_by_id — синхронный
+import inspect as _inspect  # noqa: E402
+assert not _inspect.iscoroutinefunction(BookService.get_by_id), \
     "BookService.get_by_id должен быть СИНХРОННЫМ (def, не async def)"
