@@ -21,19 +21,20 @@ jobs:
           cache: "pip"
 
       - name: Install deps
+        shell: bash
         run: |
           python -m pip install --upgrade pip
-          # общий requirements (если есть)
           [[ -f requirements.txt ]] && pip install -r requirements.txt || true
-          # дев-зависимости (если есть)
+          [[ -f app/requirements.txt ]] && pip install -r app/requirements.txt || true
           [[ -f requirements-dev.txt ]] && pip install -r requirements-dev.txt || true
-          # зависимости сервисов монорепы (если есть)
           [[ -f services/gateway/requirements.txt ]] && pip install -r services/gateway/requirements.txt || true
           [[ -f services/book-service/requirements.txt ]] && pip install -r services/book-service/requirements.txt || true
-          # на всякий случай
-          pip install -U pytest
+          # Фолбэк: ставим то, что не хватает тестам
+          pip install -q fastapi httpx sqlalchemy pydantic uvicorn pytest pytest-asyncio
 
       - name: Run pytest
+        env:
+          PYTHONPATH: app
         run: pytest -q
 
   build:
