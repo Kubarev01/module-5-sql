@@ -9,11 +9,12 @@ jobs:
   test:
     name: Install & Pytest
     runs-on: ubuntu-latest
-
-    # чтобы импорты находились и БД-URL был валиден в рантайме импортов
     env:
       PYTHONPATH: ${{ github.workspace }}/app:${{ github.workspace }}
       DATABASE_URL: sqlite+aiosqlite:///./ci.db
+      OTEL_SDK_DISABLED: "true"
+      OTEL_TRACES_EXPORTER: "none"
+      OTEL_PYTHON_DISABLED_INSTRUMENTATIONS: "all"
 
     steps:
       - name: Checkout
@@ -35,7 +36,7 @@ jobs:
           [[ -f services/gateway/requirements.txt ]] && pip install -r services/gateway/requirements.txt || true
           [[ -f services/book-service/requirements.txt ]] && pip install -r services/book-service/requirements.txt || true
 
-          # минимальный набор для тестов (включая aiosqlite для async SQLite)
+          # минимальный набор для тестов
           pip install \
             fastapi \
             httpx \
@@ -46,16 +47,7 @@ jobs:
             pytest-asyncio \
             starlette \
             anyio \
-            aiosqlite \
-            psycopg2-binary
-
-      - name: Show env for debug
-        run: |
-          python - << 'PY'
-          import os, sys
-          print("PYTHONPATH=", os.environ.get("PYTHONPATH"))
-          print("DATABASE_URL=", os.environ.get("DATABASE_URL"))
-          PY
+            aiosqlite
 
       - name: Run pytest
         run: pytest -q app/tests
