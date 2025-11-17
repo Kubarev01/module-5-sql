@@ -10,8 +10,10 @@ jobs:
     name: Install & Pytest
     runs-on: ubuntu-latest
 
+    # чтобы импорты находились и БД-URL был валиден в рантайме импортов
     env:
       PYTHONPATH: ${{ github.workspace }}/app:${{ github.workspace }}
+      DATABASE_URL: sqlite+aiosqlite:///./ci.db
 
     steps:
       - name: Checkout
@@ -27,34 +29,33 @@ jobs:
         shell: bash
         run: |
           python -m pip install --upgrade pip
-          # если есть стандартные requirements — ставим
           [[ -f requirements.txt ]] && pip install -r requirements.txt || true
           [[ -f requirements-dev.txt ]] && pip install -r requirements-dev.txt || true
           [[ -f app/requirements.txt ]] && pip install -r app/requirements.txt || true
           [[ -f services/gateway/requirements.txt ]] && pip install -r services/gateway/requirements.txt || true
           [[ -f services/book-service/requirements.txt ]] && pip install -r services/book-service/requirements.txt || true
 
-          # запасной вариант: ставим минимум, нужный тестам
+          # минимальный набор для тестов (включая aiosqlite для async SQLite)
           pip install \
-            "fastapi" \
-            "httpx" \
+            fastapi \
+            httpx \
             "sqlalchemy>=2" \
-            "pydantic" \
-            "uvicorn" \
-            "pytest" \
-            "pytest-asyncio" \
-            "starlette" \
-            "anyio" \
-            "psycopg2-binary"
+            pydantic \
+            uvicorn \
+            pytest \
+            pytest-asyncio \
+            starlette \
+            anyio \
+            aiosqlite \
+            psycopg2-binary
 
       - name: Show env for debug
         run: |
           python - << 'PY'
           import os, sys
           print("PYTHONPATH=", os.environ.get("PYTHONPATH"))
-          print("sys.path=", sys.path)
+          print("DATABASE_URL=", os.environ.get("DATABASE_URL"))
           PY
-          pip list
 
       - name: Run pytest
         run: pytest -q app/tests
