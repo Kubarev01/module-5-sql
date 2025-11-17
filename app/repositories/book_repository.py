@@ -4,21 +4,24 @@ from typing import Any, Optional
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.postgres_client import SessionLocal
-# импортируем engine, чтобы уметь создать таблицы, когда их ещё нет
-from database.postgres_client import engine  # type: ignore
-from models import Book, Author, Base  # type: ignore
+# БД и модели
+from database.postgres_client import engine, SessionLocal  # type: ignore
+from models import Base, Book, Author  # type: ignore
 from schemas import AuthorSchema, BookSchema
 
-# Redis может быть недоступен в тестах/CI — оборачиваем в try/except
+# Redis может быть недоступен (CI) — делаем мягкий импорт
 try:
     from database.redis_client import redis_client as redis  # type: ignore
     from redis.exceptions import RedisError  # type: ignore
 except Exception:  # pragma: no cover
     redis = None
-    class RedisError(Exception): ...
-    
+
+    class RedisError(Exception):
+        ...
+# ------------------------------
+
 
 class BookRepository:
     def __init__(self, session_maker=SessionLocal, ttl: int = 300, redis_client=redis):
@@ -53,15 +56,12 @@ class BookRepository:
             pass
 
     async def _ensure_schema(self) -> None:
-        """
-        Ленивая инициализация схемы БД.
-        Безопасно вызывать много раз: create_all идемпотентен.
-        """
+        """Ленивая инициализация схемы БД (идемпотентно)."""
         try:
             async with engine.begin() as conn:  # type: ignore[name-defined]
                 await conn.run_sync(Base.metadata.create_all)  # type: ignore[name-defined]
         except Exception:
-            # Не душним в рантайме: если не удалось — дадим нормальной ошибке ниже проявиться
+            # В случае гонок/ограничений окружения дадим проявиться реальной ошибке ниже
             pass
 
     @staticmethod
@@ -73,18 +73,25 @@ class BookRepository:
 
     # ---------- public API ----------
 
-    async def get_by_id(self, book_id: int) -> BookSchema | None:
+    async def get_by_id(
+        self, book_id: int, session: AsyncSession | None = None
+    ) -> BookSchema | None:
         cache_key = f"book:{book_id}"
+
         cached = await self._redis_get(cache_key)
         if cached:
             try:
                 payload = json.loads(cached)
                 return BookSchema(**payload)
             except Exception:
-                # если кэш битый — просто игнорируем
+                # битый кэш — игнорируем
                 pass
 
-        async with self.session_maker() as session:
+        if session is None:
+            async with self.session_maker() as session_:
+                return await self.get_by_id(book_id, session_)
+
+        async with session.begin():
             stmt = (
                 select(Book)
                 .options(selectinload(Book.author))
@@ -92,7 +99,6 @@ class BookRepository:
             )
             result = await session.execute(stmt)
             book: Optional[Book] = result.scalars().first()
-
             if not book:
                 return None
 
@@ -103,80 +109,110 @@ class BookRepository:
                 author=AuthorSchema(
                     id=book.author.id,
                     name=book.author.name,
-                ) if book.author else None,
+                )
+                if book.author
+                else None,
             )
 
         # вне транзакции — не блокируем БД, ошибки кэша игнорируем
-        await self._redis_set(cache_key, json.dumps(book_schema.dict(), ensure_ascii=False), ex=self.ttl)
+        try:
+            await self._redis_set(
+                cache_key,
+                json.dumps(book_schema.dict(), ensure_ascii=False),
+                ex=self.ttl,
+            )
+        except Exception:
+            pass
         return book_schema
 
-    async def create(self, book_data: dict) -> BookSchema:
-        # гарантируем, что таблицы есть (особенно актуально для sqlite в CI)
+    async def create(
+        self, book_data: dict | Any, session: AsyncSession | None = None
+    ) -> BookSchema:
         await self._ensure_schema()
 
-        async with self.session_maker() as session:
-            try:
-                book = Book(**book_data)
+        if session is None:
+            async with self.session_maker() as session_:
+                return await self.create(book_data, session_)
+
+        try:
+            async with session.begin():
+                book = Book(
+                    title=self._get(book_data, "title"),
+                    genre=self._get(book_data, "genre"),
+                    author_id=self._get(book_data, "author_id"),
+                )
                 session.add(book)
-                await session.commit()
-                await session.refresh(book)
-            except (OperationalError, ProgrammingError):
-                # если кто-то удалил таблицы — создадим и повторим один раз
-                await self._ensure_schema()
-                book = Book(**book_data)
+            await session.refresh(book)
+        except (OperationalError, ProgrammingError):
+            # если таблиц нет — создадим и повторим один раз
+            await self._ensure_schema()
+            async with session.begin():
+                book = Book(
+                    title=self._get(book_data, "title"),
+                    genre=self._get(book_data, "genre"),
+                    author_id=self._get(book_data, "author_id"),
+                )
                 session.add(book)
-                await session.commit()
-                await session.refresh(book)
+            await session.refresh(book)
+
+        return BookSchema(
+            id=book.id,
+            title=book.title,
+            genre=book.genre,
+            author=None,
+        )
+
+    async def update_by_id(
+        self, book_id: int, new_data: dict | Any, session: AsyncSession | None = None
+    ) -> BookSchema | None:
+        await self._ensure_schema()
+
+        if session is None:
+            async with self.session_maker() as session_:
+                return await self.update_by_id(book_id, new_data, session_)
+
+        async with session.begin():
+            stmt = (
+                select(Book)
+                .options(selectinload(Book.author))
+                .where(Book.id == book_id)
+            )
+            result = await session.execute(stmt)
+            book: Optional[Book] = result.scalars().first()
+            if not book:
+                return None
+
+            for key, value in dict(new_data).items():
+                if hasattr(book, key):
+                    setattr(book, key, value)
+
+            await session.flush()
 
             schema = BookSchema(
                 id=book.id,
                 title=book.title,
                 genre=book.genre,
-                author=None,
+                author=AuthorSchema(
+                    id=book.author.id,
+                    name=book.author.name,
+                )
+                if book.author
+                else None,
             )
 
-        # инвалидации тут не требуется — ключа ещё нет
+        await self._redis_delete(f"book:{book_id}")
         return schema
 
-    async def update_by_id(self, book_id: int, new_data: dict) -> BookSchema | None:
+    async def delete_by_id(
+        self, book_id: int, session: AsyncSession | None = None
+    ) -> bool:
         await self._ensure_schema()
 
-        async with self.session_maker() as session:
-            async with session.begin():
-                stmt = (
-                    select(Book)
-                    .options(selectinload(Book.author))
-                    .where(Book.id == book_id)
-                )
-                result = await session.execute(stmt)
-                book: Optional[Book] = result.scalars().first()
-                if not book:
-                    return None
+        if session is None:
+            async with self.session_maker() as session_:
+                return await self.delete_by_id(book_id, session_)
 
-                for key, value in new_data.items():
-                    if hasattr(book, key):
-                        setattr(book, key, value)
-
-                # flush, чтобы получить актуальные поля до возврата
-                await session.flush()
-
-                book_schema = BookSchema(
-                    id=book.id,
-                    title=book.title,
-                    genre=book.genre,
-                    author=AuthorSchema(
-                        id=book.author.id,
-                        name=book.author.name,
-                    ) if book.author else None,
-                )
-
-        await self._redis_delete(f"book:{book_id}")
-        return book_schema
-
-    async def delete_by_id(self, book_id: int) -> bool:
-        await self._ensure_schema()
-
-        async with self.session_maker() as session:
+        async with session.begin():
             stmt = select(Book).where(Book.id == book_id)
             result = await session.execute(stmt)
             book: Optional[Book] = result.scalars().first()
@@ -184,39 +220,44 @@ class BookRepository:
                 return False
 
             await session.delete(book)
-            await session.commit()
 
         await self._redis_delete(f"book:{book_id}")
         return True
 
-    async def create_book_with_author(self, book_data: dict | Any, author_data: dict | Any) -> BookSchema:
+    async def create_book_with_author(
+        self,
+        book_data: dict | Any,
+        author_data: dict | Any,
+        session: AsyncSession | None = None,
+    ) -> BookSchema:
         """
         Создаёт книгу и автора в одной транзакции.
         Если добавление автора упадёт, книга не сохраняется.
         """
         await self._ensure_schema()
 
-        async with self.session_maker() as session:
-            async with session.begin():
-                author = Author(name=self._get(author_data, "name"))
-                session.add(author)
+        if session is None:
+            async with self.session_maker() as session_:
+                return await self.create_book_with_author(book_data, author_data, session_)
 
-                book = Book(
-                    title=self._get(book_data, "title"),
-                    genre=self._get(book_data, "genre"),
-                    author=author,
-                )
-                session.add(book)
+        async with session.begin():
+            author = Author(name=self._get(author_data, "name"))
+            session.add(author)
 
-                # чтобы у объектов появились id до возврата
-                await session.flush()
+            book = Book(
+                title=self._get(book_data, "title"),
+                genre=self._get(book_data, "genre"),
+                author=author,
+            )
+            session.add(book)
 
-                return BookSchema(
-                    id=book.id,
-                    title=book.title,
-                    genre=book.genre,
-                    author=AuthorSchema(
-                        id=author.id,
-                        name=author.name,
-                    ),
-                )
+            await session.flush()
+
+            schema = BookSchema(
+                id=book.id,
+                title=book.title,
+                genre=book.genre,
+                author=AuthorSchema(id=author.id, name=author.name),
+            )
+
+        return schema
