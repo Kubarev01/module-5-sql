@@ -2,8 +2,7 @@ name: CI
 
 on:
   push:
-    branches:
-      - "**"
+    branches: ["**"]
   workflow_dispatch:
 
 jobs:
@@ -11,7 +10,11 @@ jobs:
     name: Install & Pytest
     runs-on: ubuntu-latest
     env:
-      PYTHONPATH: ${{ github.workspace }}/app
+      # чтобы import services.* из каталога app сработал
+      PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/app
+      # чтобы код, ожидающий DATABASE_URL, не падал на CI
+      DATABASE_URL: sqlite+aiosqlite:///./test.db
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,13 +29,20 @@ jobs:
         shell: bash
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f app/requirements.txt ]; then pip install -r app/requirements.txt; fi
-          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
-          if [ -f services/gateway/requirements.txt ]; then pip install -r services/gateway/requirements.txt; fi
-          if [ -f services/book-service/requirements.txt ]; then pip install -r services/book-service/requirements.txt; fi
-          # fallback-пакеты, чтобы точно прошла коллекция тестов
-          pip install -q fastapi httpx sqlalchemy pydantic uvicorn pytest pytest-asyncio
+          # если есть ваши requirements — установим
+          [ -f requirements.txt ] && pip install -r requirements.txt || true
+          [ -f app/requirements.txt ] && pip install -r app/requirements.txt || true
+          [ -f requirements-dev.txt ] && pip install -r requirements-dev.txt || true
+          [ -f services/gateway/requirements.txt ] && pip install -r services/gateway/requirements.txt || true
+          [ -f services/book-service/requirements.txt ] && pip install -r services/book-service/requirements.txt || true
+          # гарантированный набор для тестов
+          pip install "fastapi>=0.110" "httpx>=0.24" "sqlalchemy>=2.0" "pydantic>=2" uvicorn pytest pytest-asyncio aiosqlite
+          python - <<'PY'
+          import sys
+          print("Python:", sys.version)
+          import fastapi, httpx, sqlalchemy
+          print("Deps OK: fastapi", fastapi.__version__, "| httpx", httpx.__version__, "| sqlalchemy", sqlalchemy.__version__)
+          PY
 
       - name: Run pytest
         run: pytest -q app/tests
