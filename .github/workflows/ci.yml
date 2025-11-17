@@ -3,17 +3,12 @@ name: CI
 on:
   push:
     branches: ["**"]
-  workflow_dispatch:
+  workflow_dispatch: {}
 
 jobs:
   test:
     name: Install & Pytest
     runs-on: ubuntu-latest
-    env:
-      # чтобы import services.* из каталога app сработал
-      PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/app
-      # чтобы код, ожидающий DATABASE_URL, не падал на CI
-      DATABASE_URL: sqlite+aiosqlite:///./test.db
 
     steps:
       - name: Checkout
@@ -28,24 +23,35 @@ jobs:
       - name: Install deps
         shell: bash
         run: |
-          python -m pip install --upgrade pip
-          # если есть ваши requirements — установим
+          set -eux
+          python -m pip install --upgrade pip setuptools wheel
+          # базовый набор, чтобы не было ModuleNotFoundError
+          pip install -U pytest pytest-asyncio fastapi httpx sqlalchemy "pydantic>=2" uvicorn aiosqlite
+          # если есть ваши файлы зависимостей — тоже поставим
           [ -f requirements.txt ] && pip install -r requirements.txt || true
           [ -f app/requirements.txt ] && pip install -r app/requirements.txt || true
           [ -f requirements-dev.txt ] && pip install -r requirements-dev.txt || true
           [ -f services/gateway/requirements.txt ] && pip install -r services/gateway/requirements.txt || true
           [ -f services/book-service/requirements.txt ] && pip install -r services/book-service/requirements.txt || true
-          # гарантированный набор для тестов
-          pip install "fastapi>=0.110" "httpx>=0.24" "sqlalchemy>=2.0" "pydantic>=2" uvicorn pytest pytest-asyncio aiosqlite
+
+      - name: Sanity check imports
+        shell: bash
+        run: |
           python - <<'PY'
-          import sys
-          print("Python:", sys.version)
-          import fastapi, httpx, sqlalchemy
-          print("Deps OK: fastapi", fastapi.__version__, "| httpx", httpx.__version__, "| sqlalchemy", sqlalchemy.__version__)
+          import importlib.util, sys
+          mods = ["httpx","sqlalchemy","fastapi","pytest"]
+          missing = [m for m in mods if importlib.util.find_spec(m) is None]
+          print("Missing:", missing)
+          sys.exit(1 if missing else 0)
           PY
 
       - name: Run pytest
-        run: pytest -q app/tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/app
+          DATABASE_URL: sqlite+aiosqlite:///./test.db
+        run: |
+          python -c "import os; print('PYTHONPATH=', os.environ['PYTHONPATH'])"
+          pytest -q app/tests
 
   build:
     name: Build Docker images
@@ -53,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [gateway, book-service]
+        service: [ "gateway", "book-service" ]
 
     steps:
       - name: Checkout
