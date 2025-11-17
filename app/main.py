@@ -6,7 +6,7 @@ from routers.common import router as common_router
 from routers.inventory import router as inventory_router
 from routers.authors import router as author_router
 from routers.orders import router as order_router
-
+from app.models import Base
 from services.background_service import cache_invalidator
 import asyncio
 from prometheus_client import CollectorRegistry
@@ -114,4 +114,8 @@ def metrics_endpoint() -> Response:
 
 @app.on_event("startup")
 async def startup_event():
+    db_url = os.getenv("DATABASE_URL", "")
+    if db_url.startswith("sqlite"):
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
     asyncio.create_task(cache_invalidator())
