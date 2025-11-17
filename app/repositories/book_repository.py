@@ -7,19 +7,17 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# БД и модели
 from database.postgres_client import engine, SessionLocal  # type: ignore
 from models import Base, Book, Author  # type: ignore
 from schemas import AuthorSchema, BookSchema
 
-# Redis может быть недоступен (CI) — делаем мягкий импорт
+# Redis может отсутствовать в CI
 try:
     from database.redis_client import redis_client as redis  # type: ignore
     from redis.exceptions import RedisError  # type: ignore
 except Exception:  # pragma: no cover
     redis = None
     class RedisError(Exception): ...
-# ------------------------------
 
 async def _maybe_await(v):
     if inspect.isawaitable(v):
@@ -33,7 +31,7 @@ class BookRepository:
         self.redis = redis_client
         self.ttl = ttl
 
-    # ---------- helpers ----------
+    # ---------- Redis helpers ----------
 
     async def _redis_get(self, key: str) -> Optional[str]:
         if not self.redis:
@@ -60,29 +58,21 @@ class BookRepository:
             pass
 
     async def _ensure_schema(self) -> None:
-        """Ленивая инициализация схемы БД (идемпотентно)."""
         try:
-            from sqlalchemy.ext.asyncio import AsyncEngine  # локальный импорт на всякий
-            assert isinstance(engine, AsyncEngine) or engine  # type: ignore
-            async with engine.begin():  # type: ignore[name-defined]
-                # idempotent
-                await engine.run_sync(Base.metadata.create_all)  # type: ignore[name-defined]
+            async with engine.begin() as conn:  # type: ignore[name-defined]
+                await conn.run_sync(Base.metadata.create_all)  # type: ignore[name-defined]
         except Exception:
-            # В случае гонок/ограничений окружения дадим проявиться реальной ошибке ниже
             pass
 
     @staticmethod
     def _get(obj: Any, key: str, default=None):
-        """Достаёт поле как из dict, так и из Pydantic/объектов."""
         if isinstance(obj, dict):
             return obj.get(key, default)
         return getattr(obj, key, default)
 
-    # ---------- public API ----------
+    # ---------- API ----------
 
-    async def get_by_id(
-        self, book_id: int, session: AsyncSession | None = None
-    ) -> BookSchema | None:
+    async def get_by_id(self, book_id: int, session: AsyncSession | None = None) -> BookSchema | None:
         cache_key = f"book:{book_id}"
 
         cached = await self._redis_get(cache_key)
@@ -91,47 +81,57 @@ class BookRepository:
                 payload = json.loads(cached)
                 return BookSchema(**payload)
             except Exception:
-                pass  # битый кэш — игнорируем
+                pass
 
         if session is None:
             async with self.session_maker() as session_:
                 return await self.get_by_id(book_id, session_)
 
-        # READ-ONLY: без транзакции, чтобы не ломаться на FakeDbSession
-        stmt = (
-            select(Book)
-            .options(selectinload(Book.author))
-            .where(Book.id == book_id)
-        )
+        # Без транзакции — чтобы не падать на FakeDbSession
+        stmt = select(Book).options(selectinload(Book.author)).where(Book.id == book_id)
         result = await session.execute(stmt)
-        book: Optional[Book] = result.scalars().first()
+
+        book: Optional[Any] = None
+        if hasattr(result, "scalars"):
+            book = result.scalars().first()
+        else:
+            # Фейки могут не иметь .scalars(); пробуем mappings()/first()
+            mappings = getattr(result, "mappings", None)
+            if mappings:
+                rows = mappings().all()
+                row = rows[0] if rows else None
+                if isinstance(row, dict):
+                    book = row.get("Book") or row.get("book") or row  # best-effort
+                else:
+                    book = row
+            else:
+                first = getattr(result, "first", None)
+                row = first() if first else None
+                if isinstance(row, (list, tuple)) and row:
+                    book = row[0]
+                else:
+                    book = row
+
         if not book:
             return None
 
         book_schema = BookSchema(
-            id=book.id,
-            title=book.title,
-            genre=book.genre,
+            id=self._get(book, "id"),
+            title=self._get(book, "title"),
+            genre=self._get(book, "genre"),
             author=AuthorSchema(
-                id=book.author.id,
-                name=book.author.name,
-            ) if book.author else None,
+                id=self._get(self._get(book, "author"), "id"),
+                name=self._get(self._get(book, "author"), "name"),
+            ) if self._get(book, "author") else None,
         )
 
-  
         try:
-            await self._redis_set(
-                cache_key,
-                json.dumps(book_schema.dict(), ensure_ascii=False),
-                ex=self.ttl,
-            )
+            await self._redis_set(cache_key, json.dumps(book_schema.dict(), ensure_ascii=False), ex=self.ttl)
         except Exception:
             pass
         return book_schema
 
-    async def create(
-        self, book_data: dict | Any, session: AsyncSession | None = None
-    ) -> BookSchema:
+    async def create(self, book_data: dict | Any, session: AsyncSession | None = None) -> BookSchema:
         await self._ensure_schema()
 
         if session is None:
@@ -147,66 +147,71 @@ class BookRepository:
 
         try:
             book = _make_book()
-            await _maybe_await(getattr(session, "add")(book))
-            await _maybe_await(getattr(session, "commit")())
-            await _maybe_await(getattr(session, "refresh")(book))
+            add = getattr(session, "add", None)
+            if add:
+                await _maybe_await(add(book))
+            commit = getattr(session, "commit", None)
+            if commit:
+                await _maybe_await(commit())
+            refresh = getattr(session, "refresh", None)
+            if refresh:
+                await _maybe_await(refresh(book))
         except (OperationalError, ProgrammingError):
             await self._ensure_schema()
             book = _make_book()
-            await _maybe_await(getattr(session, "add")(book))
-            await _maybe_await(getattr(session, "commit")())
-            await _maybe_await(getattr(session, "refresh")(book))
+            add = getattr(session, "add", None)
+            if add:
+                await _maybe_await(add(book))
+            commit = getattr(session, "commit", None)
+            if commit:
+                await _maybe_await(commit())
+            refresh = getattr(session, "refresh", None)
+            if refresh:
+                await _maybe_await(refresh(book))
 
         return BookSchema(
-            id=book.id,
-            title=book.title,
-            genre=book.genre,
+            id=self._get(book, "id"),
+            title=self._get(book, "title"),
+            genre=self._get(book, "genre"),
             author=None,
         )
 
-    async def update_by_id(
-        self, book_id: int, new_data: dict | Any, session: AsyncSession | None = None
-    ) -> BookSchema | None:
+    async def update_by_id(self, book_id: int, new_data: dict | Any, session: AsyncSession | None = None) -> BookSchema | None:
         await self._ensure_schema()
 
         if session is None:
             async with self.session_maker() as session_:
                 return await self.update_by_id(book_id, new_data, session_)
 
-        stmt = (
-            select(Book)
-            .options(selectinload(Book.author))
-            .where(Book.id == book_id)
-        )
+        stmt = select(Book).options(selectinload(Book.author)).where(Book.id == book_id)
         result = await session.execute(stmt)
-        book: Optional[Book] = result.scalars().first()
+        book = result.scalars().first() if hasattr(result, "scalars") else (getattr(result, "first", lambda: None)())
         if not book:
             return None
 
         for key, value in dict(new_data).items():
             if hasattr(book, key):
                 setattr(book, key, value)
+
         if hasattr(session, "flush"):
             await _maybe_await(session.flush())
         if hasattr(session, "commit"):
             await _maybe_await(session.commit())
 
         schema = BookSchema(
-            id=book.id,
-            title=book.title,
-            genre=book.genre,
+            id=self._get(book, "id"),
+            title=self._get(book, "title"),
+            genre=self._get(book, "genre"),
             author=AuthorSchema(
-                id=book.author.id,
-                name=book.author.name,
-            ) if book.author else None,
+                id=self._get(self._get(book, "author"), "id"),
+                name=self._get(self._get(book, "author"), "name"),
+            ) if self._get(book, "author") else None,
         )
 
         await self._redis_delete(f"book:{book_id}")
         return schema
 
-    async def delete_by_id(
-        self, book_id: int, session: AsyncSession | None = None
-    ) -> bool:
+    async def delete_by_id(self, book_id: int, session: AsyncSession | None = None) -> bool:
         await self._ensure_schema()
 
         if session is None:
@@ -215,29 +220,21 @@ class BookRepository:
 
         stmt = select(Book).where(Book.id == book_id)
         result = await session.execute(stmt)
-        book: Optional[Book] = result.scalars().first()
+        book = result.scalars().first() if hasattr(result, "scalars") else (getattr(result, "first", lambda: None)())
         if not book:
             return False
 
-
-        if hasattr(session, "delete"):
-            await _maybe_await(session.delete(book))
-        if hasattr(session, "commit"):
-            await _maybe_await(session.commit())
+        delete = getattr(session, "delete", None)
+        if delete:
+            await _maybe_await(delete(book))
+        commit = getattr(session, "commit", None)
+        if commit:
+            await _maybe_await(commit())
 
         await self._redis_delete(f"book:{book_id}")
         return True
 
-    async def create_book_with_author(
-        self,
-        book_data: dict | Any,
-        author_data: dict | Any,
-        session: AsyncSession | None = None,
-    ) -> BookSchema:
-        """
-        Создаёт книгу и автора одним шагом.
-        Без явной транзакции — совместимость с FakeDbSession в тестах.
-        """
+    async def create_book_with_author(self, book_data: dict | Any, author_data: dict | Any, session: AsyncSession | None = None) -> BookSchema:
         await self._ensure_schema()
 
         if session is None:
@@ -245,16 +242,18 @@ class BookRepository:
                 return await self.create_book_with_author(book_data, author_data, session_)
 
         author = Author(name=self._get(author_data, "name"))
-        await _maybe_await(getattr(session, "add")(author))
+        add = getattr(session, "add", None)
+        if add:
+            await _maybe_await(add(author))
 
         book = Book(
             title=self._get(book_data, "title"),
             genre=self._get(book_data, "genre"),
             author=author,
         )
-        await _maybe_await(getattr(session, "add")(book))
+        if add:
+            await _maybe_await(add(book))
 
-        
         if hasattr(session, "flush"):
             await _maybe_await(session.flush())
         if hasattr(session, "commit"):
@@ -263,8 +262,8 @@ class BookRepository:
             await _maybe_await(session.refresh(book))
 
         return BookSchema(
-            id=book.id,
-            title=book.title,
-            genre=book.genre,
-            author=AuthorSchema(id=author.id, name=author.name),
+            id=self._get(book, "id"),
+            title=self._get(book, "title"),
+            genre=self._get(book, "genre"),
+            author=AuthorSchema(id=self._get(author, "id"), name=self._get(author, "name")),
         )
