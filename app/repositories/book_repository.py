@@ -114,6 +114,19 @@ class BookRepository:
 
         if not book:
             return None
+        title = self._get(book, "title") or ""
+        genre = self._get(book, "genre") or ""
+        author_obj = self._get(book, "author")
+
+        book_schema = BookSchema(
+            id=self._get(book, "id"),
+            title=title,
+            genre=genre,
+            author=AuthorSchema(
+                id=self._get(author_obj, "id"),
+                name=self._get(author_obj, "name"),
+            ) if author_obj else None,
+        )
 
         book_schema = BookSchema(
             id=self._get(book, "id"),

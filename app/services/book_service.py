@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import json
+from threading import Thread
 from fastapi import BackgroundTasks
 from kafka_client.producer import producer
 
@@ -14,17 +15,33 @@ async def send_book_view_in_thread(topic: str, book_id: int):
     await asyncio.to_thread(send_book_view_event, topic, book_id)
 
 # --- хелперы ---
-def _syncify(v):
-    """Если это awaitable и нет запущенного event-loop — выполним здесь.
-       Если loop уже запущен (FastAPI), вернём корутину — пусть await-ят снаружи."""
-    if inspect.isawaitable(v):
-        try:
-            asyncio.get_running_loop()  # запущен?
-            return v  # отдаём как есть — роуты ждут async-версии
-        except RuntimeError:
-            return asyncio.run(v)
-    return v
 
+def _syncify(v):
+    """Если v awaitable — исполним его и вернём результат.
+    Работает и когда текущий поток уже с event-loop (otel и т.п.)."""
+    if not inspect.isawaitable(v):
+        return v
+
+    try:
+        asyncio.get_running_loop()  # есть запущенный loop в этом потоке
+        box, err = {}, {}
+
+        def runner():
+            try:
+                box["v"] = asyncio.run(v)
+            except BaseException as e:
+                err["e"] = e
+
+        t = Thread(target=runner, daemon=True)
+        t.start()
+        t.join()
+        if "e" in err:
+            raise err["e"]
+        return box.get("v")
+    except RuntimeError:
+        # loop не запущен — можно просто asyncio.run
+        return asyncio.run(v)
+    
 async def _await_maybe(v):
     return await v if inspect.isawaitable(v) else v
 
