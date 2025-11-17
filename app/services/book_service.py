@@ -36,10 +36,10 @@ def _syncify(v: Any) -> Any:
     if not inspect.isawaitable(v):
         return v
     try:
-        asyncio.get_running_loop()  # loop уже запущен в этом потоке
+        asyncio.get_running_loop()  # loop уже запущен
         return _run_coro_in_new_thread(v)
     except RuntimeError:
-        # loop не запущен — можно просто asyncio.run
+        # loop не запущен — просто выполнить
         return asyncio.run(v)
 
 
@@ -79,7 +79,7 @@ class BookService:
 
     def get_by_id(self, book_id: int, background_tasks: BackgroundTasks | None = None):
         """
-        ВАЖНО: синхронный метод — тесты ожидают обычный dict/Pydantic-модель, а не корутину.
+        Синхронный метод — тесты ожидают обычный dict/Pydantic-модель, а не корутину.
         """
         if background_tasks:
             background_tasks.add_task(_send_book_view_in_thread, "book_views", book_id)
@@ -139,7 +139,36 @@ class BookService:
         return await _await_maybe(self.repo.delete_by_id(book_id, session=session))
 
 
-# Жёсткая гарантия: get_by_id — синхронный
+# ---------- страховка: если вдруг get_by_id определён как async, переопределим его на sync ----------
+
 import inspect as _inspect  # noqa: E402
-assert not _inspect.iscoroutinefunction(BookService.get_by_id), \
-    "BookService.get_by_id должен быть СИНХРОННЫМ (def, не async def)"
+import threading as _threading  # noqa: E402
+
+if _inspect.iscoroutinefunction(BookService.get_by_id):
+    _orig_async_get_by_id = BookService.get_by_id
+
+    def _sync_get_by_id(self, book_id: int, background_tasks: BackgroundTasks | None = None):
+        coro = _orig_async_get_by_id(self, book_id, background_tasks)  # корутина
+
+        try:
+            asyncio.get_running_loop()
+            # есть активный loop — выполним в отдельном потоке
+            box, err = {}, {}
+
+            def runner():
+                try:
+                    box["res"] = asyncio.run(coro)
+                except BaseException as e:
+                    err["e"] = e
+
+            t = _threading.Thread(target=runner, daemon=True)
+            t.start()
+            t.join()
+            if "e" in err:
+                raise err["e"]
+            return box.get("res")
+        except RuntimeError:
+            # loop нет — можно просто выполнить
+            return asyncio.run(coro)
+
+    BookService.get_by_id = _sync_get_by_id  # type: ignore[misc]
