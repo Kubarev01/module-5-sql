@@ -25,7 +25,7 @@ class BookService:
     def create_book_with_author(self, book_data, author_data):
         return self.repo.create_book_with_author(book_data, author_data)
 
-    def get_by_id(self, book_id: int, background_tasks: BackgroundTasks):
+    def get_by_id(self, book_id: int, background_tasks: BackgroundTasks | None = None):
         
         background_tasks.add_task(
             send_book_view_in_thread,

@@ -3,67 +3,47 @@ import asyncio
 import backoff
 from types import SimpleNamespace
 from repositories.author_repository import AuthorRepository
-from aiobreaker import CircuitBreaker, CircuitBreakerError
-import aiohttp
+from aiobreaker import CircuitBreaker
+
+
 class DummyRepo:
     async def get_by_id(self, author_id: int):
-        # просто заглушка, чтобы не мешала логике breaker’а
+        # простая заглушка, чтобы не мешала логике breaker’а
         return SimpleNamespace(id=author_id, name=None)
-    
+
 
 class AuthorService:
     _semaphore = asyncio.Semaphore(5)
-    def __init__(self, repo: AuthorRepository, base_url="http://localhost:8000"):
-        self.repo = repo
-        self.client = AsyncClient(base_url=base_url)
 
-        self.breaker = CircuitBreaker(
-            fail_max=5,
-        
-        )
+    def __init__(self, repo: AuthorRepository, base_url: str = "http://localhost:8000"):
+        self.repo = repo
+        # таймаут даём клиенту сразу, чтобы не плодить доп. сессии
+        self.client = AsyncClient(base_url=base_url, timeout=2.0)
+        self.breaker = CircuitBreaker(fail_max=5)
 
     @backoff.on_exception(backoff.expo, (RequestError, ReadTimeout), max_tries=3)
     async def get_author_details(self, author_id: int):
+        # ждём репозиторий ограниченное время, иначе вернём None
         try:
-            with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=2.0)):
-                author = await self.repo.get_by_id(author_id)
+            author = await asyncio.wait_for(self.repo.get_by_id(author_id), timeout=2.0)
         except asyncio.TimeoutError:
-            print("Repo timed out")
             return None
-        
+
         async with self._semaphore:
+            # ВАЖНО: не перехватываем RequestError/CircuitBreakerError —
+            # тест ожидает, что они поднимутся наружу.
+            author_resp = await self.breaker.call_async(self.client.get, f"/authors/{author_id}")
+            author_name = author_resp.json().get("name")
+
+            # Отзывы — best-effort: ошибка тут не должна ломать основной сценарий
+            reviews = []
             try:
-                author_call, review_call = await asyncio.gather(
-                    self.breaker.call_async(
-                        self.client.get,
-                        f"/authors/{author_id}",
-                    ),
-                    self.client.get(f"/authors/{author_id}/reviews"),
-                )
-                responses = await asyncio.gather(
-                author_call,
-                review_call,
-                return_exceptions=True,  
-            )
-            except CircuitBreakerError as e:
-                
-                return print(f"Circuit breaker is open: {e}")
-           
-            
+                reviews_resp = await self.client.get(f"/authors/{author_id}/reviews")
+                reviews = reviews_resp.json()
+            except (RequestError, ReadTimeout):
+                reviews = []
 
-            author_response, review_response = responses
-            if isinstance(author_response, Exception):
-                print(f"Author service call failed: {author_response}")
-                return None
-            if isinstance(review_response, Exception):
-                print(f"Review service call failed: {review_response}")
-                return None
+            return SimpleNamespace(id=author.id, name=author_name, reviews=reviews)
 
-            return SimpleNamespace(
-                id=author.id,
-                name=author_response.json().get("name"),
-                reviews=review_response.json(),
-            )
-        
     async def create_author(self, author_data: dict):
         return await self.repo.create(author_data)
