@@ -2,14 +2,16 @@ name: CI
 
 on:
   push:
-    branches: [ "**" ]
-  workflow_dispatch: {}
+    branches:
+      - "**"
+  workflow_dispatch:
 
 jobs:
   test:
     name: Install & Pytest
     runs-on: ubuntu-latest
-
+    env:
+      PYTHONPATH: ${{ github.workspace }}/app
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,18 +26,16 @@ jobs:
         shell: bash
         run: |
           python -m pip install --upgrade pip
-          [[ -f requirements.txt ]] && pip install -r requirements.txt || true
-          [[ -f app/requirements.txt ]] && pip install -r app/requirements.txt || true
-          [[ -f requirements-dev.txt ]] && pip install -r requirements-dev.txt || true
-          [[ -f services/gateway/requirements.txt ]] && pip install -r services/gateway/requirements.txt || true
-          [[ -f services/book-service/requirements.txt ]] && pip install -r services/book-service/requirements.txt || true
-          # Фолбэк: ставим то, что не хватает тестам
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f app/requirements.txt ]; then pip install -r app/requirements.txt; fi
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+          if [ -f services/gateway/requirements.txt ]; then pip install -r services/gateway/requirements.txt; fi
+          if [ -f services/book-service/requirements.txt ]; then pip install -r services/book-service/requirements.txt; fi
+          # fallback-пакеты, чтобы точно прошла коллекция тестов
           pip install -q fastapi httpx sqlalchemy pydantic uvicorn pytest pytest-asyncio
 
       - name: Run pytest
-        env:
-          PYTHONPATH: app
-        run: pytest -q
+        run: pytest -q app/tests
 
   build:
     name: Build Docker images
@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [ "gateway", "book-service" ]
+        service: [gateway, book-service]
 
     steps:
       - name: Checkout
@@ -52,14 +52,13 @@ jobs:
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build ${{ matrix.service }} image (skip if Dockerfile missing)
+      - name: Build ${{ matrix.service }} image (if Dockerfile exists)
         if: ${{ hashFiles(format('services/{0}/Dockerfile', matrix.service)) != '' }}
         uses: docker/build-push-action@v6
         with:
           context: services/${{ matrix.service }}
           file: services/${{ matrix.service }}/Dockerfile
           push: false
-          tags: |
-            ${{ github.repository }}:${{ matrix.service }}-ci-${{ github.sha }}
+          tags: ${{ github.repository }}:${{ matrix.service }}-ci-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
