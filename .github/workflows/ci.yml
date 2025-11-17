@@ -10,6 +10,9 @@ jobs:
     name: Install & Pytest
     runs-on: ubuntu-latest
 
+    env:
+      PYTHONPATH: ${{ github.workspace }}/app:${{ github.workspace }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,38 +23,41 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      - name: Install deps
+      - name: Install deps (project + fallbacks)
         shell: bash
         run: |
-          set -eux
-          python -m pip install --upgrade pip setuptools wheel
-          # базовый набор, чтобы не было ModuleNotFoundError
-          pip install -U pytest pytest-asyncio fastapi httpx sqlalchemy "pydantic>=2" uvicorn aiosqlite
-          # если есть ваши файлы зависимостей — тоже поставим
-          [ -f requirements.txt ] && pip install -r requirements.txt || true
-          [ -f app/requirements.txt ] && pip install -r app/requirements.txt || true
-          [ -f requirements-dev.txt ] && pip install -r requirements-dev.txt || true
-          [ -f services/gateway/requirements.txt ] && pip install -r services/gateway/requirements.txt || true
-          [ -f services/book-service/requirements.txt ] && pip install -r services/book-service/requirements.txt || true
+          python -m pip install --upgrade pip
+          # если есть стандартные requirements — ставим
+          [[ -f requirements.txt ]] && pip install -r requirements.txt || true
+          [[ -f requirements-dev.txt ]] && pip install -r requirements-dev.txt || true
+          [[ -f app/requirements.txt ]] && pip install -r app/requirements.txt || true
+          [[ -f services/gateway/requirements.txt ]] && pip install -r services/gateway/requirements.txt || true
+          [[ -f services/book-service/requirements.txt ]] && pip install -r services/book-service/requirements.txt || true
 
-      - name: Sanity check imports
-        shell: bash
+          # запасной вариант: ставим минимум, нужный тестам
+          pip install \
+            "fastapi" \
+            "httpx" \
+            "sqlalchemy>=2" \
+            "pydantic" \
+            "uvicorn" \
+            "pytest" \
+            "pytest-asyncio" \
+            "starlette" \
+            "anyio" \
+            "psycopg2-binary"
+
+      - name: Show env for debug
         run: |
-          python - <<'PY'
-          import importlib.util, sys
-          mods = ["httpx","sqlalchemy","fastapi","pytest"]
-          missing = [m for m in mods if importlib.util.find_spec(m) is None]
-          print("Missing:", missing)
-          sys.exit(1 if missing else 0)
+          python - << 'PY'
+          import os, sys
+          print("PYTHONPATH=", os.environ.get("PYTHONPATH"))
+          print("sys.path=", sys.path)
           PY
+          pip list
 
       - name: Run pytest
-        env:
-          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/app
-          DATABASE_URL: sqlite+aiosqlite:///./test.db
-        run: |
-          python -c "import os; print('PYTHONPATH=', os.environ['PYTHONPATH'])"
-          pytest -q app/tests
+        run: pytest -q app/tests
 
   build:
     name: Build Docker images
@@ -59,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [ "gateway", "book-service" ]
+        service: ["gateway", "book-service"]
 
     steps:
       - name: Checkout
@@ -68,13 +74,14 @@ jobs:
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build ${{ matrix.service }} image (if Dockerfile exists)
+      - name: Build ${{ matrix.service }} image (skip if Dockerfile missing)
         if: ${{ hashFiles(format('services/{0}/Dockerfile', matrix.service)) != '' }}
         uses: docker/build-push-action@v6
         with:
           context: services/${{ matrix.service }}
           file: services/${{ matrix.service }}/Dockerfile
           push: false
-          tags: ${{ github.repository }}:${{ matrix.service }}-ci-${{ github.sha }}
+          tags: |
+            ${{ github.repository }}:${{ matrix.service }}-ci-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
