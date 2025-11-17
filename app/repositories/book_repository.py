@@ -60,7 +60,6 @@ class BookRepository:
             async with engine.begin() as conn:  # type: ignore[name-defined]
                 await conn.run_sync(Base.metadata.create_all)  # type: ignore[name-defined]
         except Exception:
-            # В CI/гонках дадим проявиться реальной ошибке позже
             pass
 
     @staticmethod
@@ -70,7 +69,6 @@ class BookRepository:
             return obj.get(key, default)
         return getattr(obj, key, default)
 
-    # маленький помощник — поддержать "фейковые" сессии из тестов
     @staticmethod
     def _supports(session: Any, *methods: str) -> bool:
         return all(hasattr(session, m) for m in methods)
@@ -97,8 +95,8 @@ class BookRepository:
         # Без транзакции — чтобы не падать на FakeDbSession
         stmt = (
             select(Book)
-            .options(selectinload(Book.author))
-            .where(Book.id == book_id)
+                .options(selectinload(Book.author))
+                .where(Book.id == book_id)
         )
         result = await session.execute(stmt)
 
@@ -106,7 +104,6 @@ class BookRepository:
         if hasattr(result, "scalars"):
             book = result.scalars().first()
         else:
-            # Фейки могут не иметь .scalars(); пробуем mappings()/first()
             mappings = getattr(result, "mappings", None)
             if mappings:
                 rows = mappings().all()
@@ -126,7 +123,6 @@ class BookRepository:
         if not book:
             return None
 
-        # Собираем схему ОДИН раз и с безопасными дефолтами
         author_obj = self._get(book, "author")
         book_schema = BookSchema(
             id=self._get(book, "id"),
@@ -135,13 +131,16 @@ class BookRepository:
             author=AuthorSchema(
                 id=self._get(author_obj, "id"),
                 name=self._get(author_obj, "name"),
-            )
-            if author_obj
-            else None,
+            ) if author_obj else None,
         )
 
+        # pydantic v2: model_dump вместо dict()
         try:
-            await self._redis_set(cache_key, json.dumps(book_schema.dict(), ensure_ascii=False), ex=self.ttl)
+            await self._redis_set(
+                cache_key,
+                json.dumps(book_schema.model_dump(), ensure_ascii=False),
+                ex=self.ttl,
+            )
         except Exception:
             pass
         return book_schema
@@ -151,13 +150,11 @@ class BookRepository:
     ) -> BookSchema:
         await self._ensure_schema()
 
-        # если нам подсунули фейковую сессию без нужных методов — откроем свою
         if session is None or not self._supports(session, "add", "commit", "refresh"):
             async with self.session_maker() as session_:
                 return await self.create(book_data, session_)
 
         try:
-            # ORM-путь
             book = Book(
                 title=self._get(book_data, "title"),
                 genre=self._get(book_data, "genre"),
@@ -167,7 +164,6 @@ class BookRepository:
             await session.commit()
             await session.refresh(book)
         except (OperationalError, ProgrammingError):
-            # если таблиц нет — создадим и повторим один раз
             await self._ensure_schema()
             book = Book(
                 title=self._get(book_data, "title"),
@@ -189,11 +185,10 @@ class BookRepository:
             async with self.session_maker() as session_:
                 return await self.update_by_id(book_id, new_data, session_)
 
-        # читаем без транзакции (для совместимости с фейками)
         stmt = (
             select(Book)
-            .options(selectinload(Book.author))
-            .where(Book.id == book_id)
+                .options(selectinload(Book.author))
+                .where(Book.id == book_id)
         )
         result = await session.execute(stmt)
         book: Optional[Book] = result.scalars().first() if hasattr(result, "scalars") else None
@@ -204,7 +199,6 @@ class BookRepository:
             if hasattr(book, key):
                 setattr(book, key, value)
 
-        # фиксация
         if hasattr(session, "flush"):
             await session.flush()
         await session.commit()
@@ -238,7 +232,6 @@ class BookRepository:
             await session.delete(book)
             await session.commit()
         else:
-            # запасной план (на случай сверх-минималистичных фейков)
             await session.execute(text("DELETE FROM books WHERE id = :id"), {"id": book_id})
             await session.commit()
 
@@ -251,17 +244,13 @@ class BookRepository:
         author_data: dict | Any,
         session: AsyncSession | None = None,
     ) -> BookSchema:
-        """
-        Создаёт книгу и автора в одной транзакции.
-        Если добавление автора упадёт, книга не сохраняется.
-        """
+        """Создаёт книгу и автора в одной транзакции."""
         await self._ensure_schema()
 
         if session is None or not self._supports(session, "add", "commit", "refresh"):
             async with self.session_maker() as session_:
                 return await self.create_book_with_author(book_data, author_data, session_)
 
-        # настоящая транзакция, если сессия это поддерживает (AsyncSession)
         try:
             async with session.begin():
                 author = Author(name=self._get(author_data, "name"))
@@ -274,18 +263,15 @@ class BookRepository:
                 )
                 session.add(book)
 
-                # чтобы получить id до возврата
                 await session.flush()
 
-            schema = BookSchema(
+            return BookSchema(
                 id=book.id,
                 title=book.title,
                 genre=book.genre,
                 author=AuthorSchema(id=author.id, name=author.name),
             )
-            return schema
         except AttributeError:
-            # если begin отсутствует — делаем "ручную" транзакцию
             author = Author(name=self._get(author_data, "name"))
             session.add(author)
             book = Book(
