@@ -13,14 +13,14 @@ jobs:
       PYTHONPATH: ${{ github.workspace }}/app:${{ github.workspace }}
       DATABASE_URL: sqlite+aiosqlite:///./ci.db
 
-
+      # отключаем OTel в CI
       OTEL_SDK_DISABLED: "true"
       OTEL_TRACES_EXPORTER: "none"
       OTEL_METRICS_EXPORTER: "none"
       OTEL_LOGS_EXPORTER: "none"
       OTEL_PYTHON_DISABLED_INSTRUMENTATIONS: "all"
 
-  
+      # заглушки Zipkin
       ZIPKIN_HOST: ""
       OTEL_EXPORTER_ZIPKIN_ENDPOINT: ""
       OTEL_EXPORTER_ZIPKIN_PROTOCOL: "http/json"
@@ -44,20 +44,13 @@ jobs:
           [[ -f app/requirements.txt ]] && pip install -r app/requirements.txt || true
           [[ -f services/gateway/requirements.txt ]] && pip install -r services/gateway/requirements.txt || true
           [[ -f services/book-service/requirements.txt ]] && pip install -r services/book-service/requirements.txt || true
-
-          # минимальный набор, чтобы гарантированно прошли тесты
-          pip install \
-            "sqlalchemy>=2" aiosqlite \
-            fastapi starlette anyio uvicorn \
-            httpx pytest pytest-asyncio redis
+          pip install "sqlalchemy>=2" aiosqlite fastapi starlette anyio uvicorn httpx pytest pytest-asyncio redis
 
       - name: Prepare CI test plugin (stub Redis, init DB schema, fix BackgroundTasks)
         shell: bash
         run: |
           cat > ci_fixtures.py << 'PY'
           import asyncio
-
-          # 1) подменяем реальный redis-клиент на заглушку
           try:
               import database.redis_client as rc
               class _FakeRedis:
@@ -67,8 +60,6 @@ jobs:
               rc.redis_client = _FakeRedis()
           except Exception:
               pass
-
-          # 2) гарантируем, что таблицы созданы (sqlite в CI)
           try:
               from database.postgres_client import engine
               from models import Base
@@ -78,8 +69,6 @@ jobs:
               asyncio.get_event_loop().run_until_complete(_create())
           except Exception:
               pass
-
-          # 3) безопасно работаем с BookService.get_by_id, когда background_tasks=None
           try:
               from services.book_service import BookService
               _orig = BookService.get_by_id
@@ -97,16 +86,21 @@ jobs:
       - name: Run pytest (with CI fixtures)
         run: pytest -q app/tests -p ci_fixtures
 
-  build-and-push:
+  build_and_push:
     name: Build & Push Docker images
     needs: test
     runs-on: ubuntu-latest
-    env:
-      IMAGE_APP:     ${{ secrets.DOCKERHUB_USERNAME }}/book-service
-      IMAGE_GATEWAY: ${{ secrets.DOCKERHUB_USERNAME }}/gateway
     strategy:
       matrix:
-        service: ["gateway", "book-service"]
+        include:
+          - name: gateway
+            context: gateway
+            dockerfile: gateway/Dockerfile
+            image: gateway
+          - name: book-service
+            context: app
+            dockerfile: app/Dockerfile
+            image: book-service
 
     steps:
       - name: Checkout
@@ -121,50 +115,16 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-
-      - name: Detect build context
-        id: detect
-        shell: bash
-        run: |
-          svc="${{ matrix.service }}"
-
-          try1="services/${svc}"
-          try2="${svc}"
-          # маппинг book-service -> app, если нет каталога services/book-service
-          if [[ "$svc" == "book-service" ]]; then
-            try2="app"
-          fi
-
-          if [[ -f "${try1}/Dockerfile" ]]; then
-            ctx="${try1}"; file="${try1}/Dockerfile"
-          elif [[ -f "${try2}/Dockerfile" ]]; then
-            ctx="${try2}"; file="${try2}/Dockerfile"
-          else
-            echo "✗ Dockerfile not found for ${svc}"
-            exit 1
-          fi
-
-          if [[ "$svc" == "book-service" ]]; then
-            image="${IMAGE_APP}"
-          else
-            image="${IMAGE_GATEWAY}"
-          fi
-
-          echo "context=${ctx}" >> "$GITHUB_OUTPUT"
-          echo "file=${file}"     >> "$GITHUB_OUTPUT"
-          echo "image=${image}"   >> "$GITHUB_OUTPUT"
-
-      - name: Build & Push ${{ matrix.service }}
+      - name: Build & Push ${{ matrix.name }}
+        if: ${{ hashFiles(matrix.dockerfile) != '' }}
         uses: docker/build-push-action@v6
         with:
-          context: ${{ steps.detect.outputs.context }}
-          file:    ${{ steps.detect.outputs.file }}
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           push: true
+          platforms: linux/amd64
           tags: |
-            ${{ steps.detect.outputs.image }}:latest
-            ${{ steps.detect.outputs.image }}:${{ github.sha }}
-          labels: |
-            org.opencontainers.image.source=${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
