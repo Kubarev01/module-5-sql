@@ -1,0 +1,55 @@
+name: CD - Deploy to Kubernetes
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "deploy mode: apply|restart"
+        required: false
+        default: "apply"
+
+concurrency:
+  group: cd-deploy-main
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      K8S_NAMESPACE: ${{ secrets.K8S_NAMESPACE }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Set K8s Context
+        uses: azure/k8s-set-context@v3
+        with:
+            method: kubeconfig
+            kubeconfig: ${{ secrets.KUBE_CONFIG }}
+            namespace: ${{ secrets.K8S_NAMESPACE }}
+
+
+      - name: kubectl apply -f ./k8s (recursive)
+        if: ${{ github.event_name == 'push' || inputs.mode == 'apply' }}
+        shell: bash
+        run: |
+          NS="${K8S_NAMESPACE:-default}"
+          echo "Using namespace: ${NS}"
+          kubectl get ns "${NS}" >/dev/null 2>&1 || kubectl create ns "${NS}"
+          kubectl apply -R -f ./k8s/ -n "${NS}"
+          echo "Waiting for deployments rollout..."
+          # ожидаем все деплойменты в namespace (можно сузить список при желании)
+          for d in $(kubectl get deploy -n "${NS}" -o jsonpath='{.items[*].metadata.name}'); do
+            kubectl rollout status deploy/"$d" -n "${NS}" --timeout=180s || exit 1
+          done
+
+    
