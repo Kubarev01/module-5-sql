@@ -91,11 +91,12 @@ class BookService:
             self.repo.create_book_with_author(book_data, author_data, session=session)
         )
 
-    async def get_by_id(self, book_id: int, background_tasks: BackgroundTasks | None = None, *, session=None):
-        """Теперь async: это устраивает ci_fixtures, где awaitят оригинальный метод."""
+    async def get_by_id_async(self, book_id: int, background_tasks: BackgroundTasks | None = None, *, session=None):
+        """Асинхронный метод для FastAPI-роутов.
+        Не делегирует в self.get_by_id, чтобы не конфликтовать с CI-обёрткой без параметра 'session'."""
         if background_tasks:
             background_tasks.add_task(send_book_view_in_thread, "book_views", book_id)
-        # repo.get_by_id может быть как sync, так и async — сгладим это:
+
         if session is not None:
             return await _await_maybe(self.repo.get_by_id(book_id, session=session))
         return await _await_maybe(self.repo.get_by_id(book_id))
