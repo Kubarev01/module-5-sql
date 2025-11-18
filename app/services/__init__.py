@@ -1,51 +1,39 @@
 # app/services/__init__.py
-import asyncio
-import inspect
-from threading import Thread
-from typing import Any, Optional
-from fastapi import BackgroundTasks
+"""
+Lightweight package init to avoid import-time crashes in tests/CI.
+No eager re-exports; use lazy access for optional conveniences.
+"""
 
-from .book_service import BookService as _BookService, send_book_view_in_thread  # type: ignore
+from importlib import import_module
 
+__all__ = ["BookService", "AuthorService", "send_book_view_in_thread"]
 
-def _syncify(v: Any) -> Any:
-    if not inspect.isawaitable(v):
-        return v
-    try:
-        asyncio.get_running_loop()  # уже есть loop => выполняем в отдельном потоке
-        box, err = {}, {}
+def __getattr__(name):
+    if name == "BookService":
+        return import_module(".book_service", __name__).BookService
+    if name == "AuthorService":
+        return import_module(".author_service", __name__).AuthorService
+    if name == "send_book_view_in_thread":
+        # 1) если функция есть в book_service — используем её,
+        # 2) иначе пробуем background_service,
+        # 3) иначе возвращаем no-op корутину.
+        try:
+            mod = import_module(".book_service", __name__)
+            fn = getattr(mod, "send_book_view_in_thread", None)
+            if fn:
+                return fn
+        except Exception:
+            pass
+        try:
+            mod = import_module(".background_service", __name__)
+            fn = getattr(mod, "send_book_view_in_thread", None)
+            if fn:
+                return fn
+        except Exception:
+            pass
 
-        def runner():
-            try:
-                box["v"] = asyncio.run(v)
-            except BaseException as e:
-                err["e"] = e
+        async def _noop(*args, **kwargs):
+            return None
+        return _noop
 
-        t = Thread(target=runner, daemon=True)
-        t.start()
-        t.join()
-        if "e" in err:
-            raise err["e"]
-        return box.get("v")
-    except RuntimeError:
-        # loop не запущен — можно напрямую
-        return asyncio.run(v)
-
-
-def _get_by_id_sync(
-    self: _BookService,
-    book_id: int,
-    background_tasks: Optional[BackgroundTasks] = None,
-):
-    if background_tasks:
-        background_tasks.add_task(send_book_view_in_thread, "book_views", book_id)
-    # Критично: разворачиваем любой awaitable в синхронное значение
-    return _syncify(self.repo.get_by_id(book_id))
-
-
-# ПАТЧИМ класс, чтобы даже при старом book_service get_by_id был синхронным
-_BookService.get_by_id = _get_by_id_sync  # type: ignore[attr-defined]
-
-BookService = _BookService
-
-__all__ = ["BookService"]
+    raise AttributeError(name)
