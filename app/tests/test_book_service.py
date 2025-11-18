@@ -1,5 +1,6 @@
-# tests/test_book_service.py
+# app/tests/test_book_service.py
 import pytest
+import inspect
 from services.book_service import BookService
 
 
@@ -19,7 +20,7 @@ class FakeBookRepository:
 class FakeRedis:
     def publish(self, channel, message):
         return None
-    
+
 @pytest.fixture
 def fake_redis():
     return FakeRedis()
@@ -29,16 +30,21 @@ def test_create_book(mocker, fake_redis):
     mocker.patch.object(repo, "create", return_value={"id": 1, "title": "Mocked Book"})
 
     service = BookService(repo, fake_redis)
-    result = service.create({"title": "Any Book"})  
+    result = service.create({"title": "Any Book"})
     assert result["title"] == "Mocked Book"
     assert result["id"] == 1
 
-def test_get_book(mocker):
+@pytest.mark.asyncio
+async def test_get_book(mocker):
     repo = FakeBookRepository()
     mocker.patch.object(repo, "get_by_id", return_value={"id": 1, "title": "Mocked Book"})
 
     service = BookService(repo, None)
-    book = service.get_by_id(1)  
+    res = service.get_by_id(1)  # может быть dict или coroutine
+
+    # Разворачиваем, если это корутина
+    book = await res if inspect.isawaitable(res) else res
+
     assert book["id"] == 1
     assert book["title"] == "Mocked Book"
 
