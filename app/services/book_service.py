@@ -1,92 +1,75 @@
+# app/services/book_service.py
 import asyncio
 import inspect
 import json
 from threading import Thread
 from typing import Any, Optional
-
 from fastapi import BackgroundTasks
 from kafka_client.producer import producer
 
+# --- отправка в Kafka (фоновая) ---
+def send_book_view_event(topic: str, book_id: int):
+    payload = json.dumps({"book_id": book_id}).encode("utf-8")
+    producer.produce(topic=topic, value=payload)
+    producer.flush()
 
-# ===== утилиты =====
+async def send_book_view_in_thread(topic: str, book_id: int):
+    await asyncio.to_thread(send_book_view_event, topic, book_id)
 
-def _run_coro_in_thread(coro):
-    box = {"res": None, "err": None}
-
-    def runner():
-        try:
-            box["res"] = asyncio.run(coro)
-        except BaseException as e:
-            box["err"] = e
-
-    t = Thread(target=runner, daemon=True)
-    t.start()
-    t.join()
-    if box["err"] is not None:
-        raise box["err"]
-    return box["res"]
-
-
-def _syncify(v: Any) -> Any:
-    """Если v — awaitable, выполняем и возвращаем результат."""
+# --- хелперы ---
+def _syncify(v):
+    """Если v awaitable — исполняем и возвращаем результат, иначе возвращаем как есть.
+    Работает и когда в текущем потоке уже крутится event loop (otel и т.п.)."""
     if not inspect.isawaitable(v):
         return v
+
     try:
-        asyncio.get_running_loop()  # loop уже запущен -> выполняем в отдельном потоке
-        return _run_coro_in_thread(v)
+        # если loop уже запущен в текущем потоке — выполним в отдельном потоке
+        asyncio.get_running_loop()
+        box, err = {}, {}
+
+        def runner():
+            try:
+                box["v"] = asyncio.run(v)
+            except BaseException as e:
+                err["e"] = e
+
+        t = Thread(target=runner, daemon=True)
+        t.start()
+        t.join()
+        if "e" in err:
+            raise err["e"]
+        return box.get("v")
     except RuntimeError:
+        # loop не запущен — можно просто asyncio.run
         return asyncio.run(v)
 
-
-async def _await_maybe(v: Any) -> Any:
+async def _await_maybe(v):
     return await v if inspect.isawaitable(v) else v
 
 
-# ===== Kafka (мягко для CI) =====
-
-def _send_book_view_event(topic: str, book_id: int):
-    payload = json.dumps({"book_id": book_id}).encode("utf-8")
-    try:
-        producer.produce(topic=topic, value=payload)
-        producer.flush()
-    except Exception:
-        # В CI брокера нет — просто игнорируем
-        pass
-
-
-async def _send_book_view_in_thread(topic: str, book_id: int):
-    await asyncio.to_thread(_send_book_view_event, topic, book_id)
-
-
-# ===== сервис =====
-
 class BookService:
-    def __init__(self, repo, redis: Optional[Any] = None):
+    def __init__(self, repo, redis=None):
         self.repo = repo
         self.redis = redis
 
-    # ---------- синхронные для unit-тестов ----------
+    # ---------- СИНХРОННЫЕ методы для unit-тестов ----------
     def create(self, data):
         return _syncify(self.repo.create(data))
 
     def create_book_with_author(self, book_data, author_data):
         return _syncify(self.repo.create_book_with_author(book_data, author_data))
 
-    def get_by_id_sync(self, book_id: int, background_tasks: BackgroundTasks | None = None):
-        """Всегда синхронный метод — то, что ожидает тест."""
-        if background_tasks:
-            background_tasks.add_task(_send_book_view_in_thread, "book_views", book_id)
-        return _syncify(self.repo.get_by_id(book_id))
-
     def update_by_id(self, book_id, new_data):
         result = _syncify(self.repo.update_by_id(book_id, new_data))
-        if result and self.redis:
+        # если получилось синхронное значение — оповестим редис (если есть)
+        if not inspect.isawaitable(result) and result and self.redis:
             pub = getattr(self.redis, "publish", None)
             if pub:
                 try:
                     out = pub("cache:invalidate", str(book_id))
                     if inspect.isawaitable(out):
-                        _syncify(out)
+                        asyncio.run(out)
                 except Exception:
                     pass
         return result
@@ -94,7 +77,12 @@ class BookService:
     def delete_by_id(self, book_id):
         return _syncify(self.repo.delete_by_id(book_id))
 
-    # ---------- асинхронные для FastAPI ----------
+    # (необязательно для тестов, но полезно)
+    def get_by_id_sync(self, book_id: int, background_tasks: Optional[BackgroundTasks] = None):
+        """Синхронная обёртка над async get_by_id (если где-то нужна синхронщина)."""
+        return _syncify(self.get_by_id(book_id, background_tasks))
+
+    # ---------- АСИНХРОННЫЕ методы ----------
     async def create_async(self, data, *, session=None):
         return await _await_maybe(self.repo.create(data, session=session))
 
@@ -103,16 +91,18 @@ class BookService:
             self.repo.create_book_with_author(book_data, author_data, session=session)
         )
 
-    async def get_by_id_async(
-        self,
-        book_id: int,
-        background_tasks: BackgroundTasks | None = None,
-        *,
-        session=None,
-    ):
+    async def get_by_id(self, book_id: int, background_tasks: BackgroundTasks | None = None, *, session=None):
+        """Теперь async: это устраивает ci_fixtures, где awaitят оригинальный метод."""
         if background_tasks:
-            background_tasks.add_task(_send_book_view_in_thread, "book_views", book_id)
-        return await _await_maybe(self.repo.get_by_id(book_id, session=session))
+            background_tasks.add_task(send_book_view_in_thread, "book_views", book_id)
+        # repo.get_by_id может быть как sync, так и async — сгладим это:
+        if session is not None:
+            return await _await_maybe(self.repo.get_by_id(book_id, session=session))
+        return await _await_maybe(self.repo.get_by_id(book_id))
+
+    async def get_by_id_async(self, book_id: int, background_tasks: BackgroundTasks | None = None, *, session=None):
+        # для совместимости с текущими роутами
+        return await self.get_by_id(book_id, background_tasks, session=session)
 
     async def update_by_id_async(self, book_id, new_data, *, session=None):
         result = await _await_maybe(self.repo.update_by_id(book_id, new_data, session=session))
@@ -129,7 +119,3 @@ class BookService:
 
     async def delete_by_id_async(self, book_id, *, session=None):
         return await _await_maybe(self.repo.delete_by_id(book_id, session=session))
-
-
-# ===== безусловно закрепляем синхронную версию под именем get_by_id =====
-BookService.get_by_id = BookService.get_by_id_sync  # type: ignore[attr-defined]
