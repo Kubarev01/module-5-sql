@@ -12,12 +12,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-
-COPY app/requirements.txt ./requirements.txt
-
+# В КОНТЕКСТЕ уже папка app/, поэтому без префикса
+COPY requirements.txt ./requirements.txt
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
-
 
 
 FROM python:3.11-slim AS final
@@ -30,10 +28,7 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-
-COPY app/ .
+COPY . .
 
 EXPOSE 8000
-
-# main.py теперь реально лежит в /app/main.py
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
