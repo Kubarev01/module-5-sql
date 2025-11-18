@@ -1,0 +1,52 @@
+name: CD • Deploy to Kubernetes
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch: {}
+
+concurrency:
+  group: cd-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Apply k8s manifests
+    runs-on: [self-hosted, linux, x64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.30.0
+
+      - name: Configure kubeconfig from secret
+        env:
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }}
+        run: |
+          if [ -z "$KUBE_CONFIG_B64" ]; then
+            echo "::error::Secret KUBE_CONFIG_B64 is empty. Add your base64-encoded kubeconfig to repository secrets."
+            exit 1
+          fi
+          mkdir -p "$HOME/.kube"
+          echo "$KUBE_CONFIG_B64" | base64 -d > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+          # Показать контекст (без приватных данных)
+          kubectl config current-context || true
+
+      - name: Sanity check cluster access
+        run: |
+          kubectl version --short
+          kubectl get nodes
+
+      - name: kubectl apply -f ./k8s/
+        run: kubectl apply -f ./k8s/
+
+      - name: Force rollout restart (fastapi-book-service)
+        if: always()
+        run: |
+          kubectl rollout restart deployment/fastapi-book-service || true
+          kubectl rollout status  deployment/fastapi-book-service --timeout=120s || true
