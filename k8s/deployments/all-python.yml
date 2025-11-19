@@ -5,15 +5,18 @@ metadata:
   name: book-service
   labels:
     app: book-service
+    version: v1
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: book-service
+      version: v1
   template:
     metadata:
       labels:
         app: book-service
+        version: v1
     spec:
       containers:
         - name: book-service
@@ -37,7 +40,6 @@ spec:
               value: parentbased_always_on
             - name: OTEL_PROPAGATORS
               value: tracecontext,baggage
-
           readinessProbe:
             httpGet:
               path: /health
@@ -57,10 +59,12 @@ metadata:
   name: book-service
   labels:
     app: book-service
+    version: v1
 spec:
   type: ClusterIP
   selector:
     app: book-service
+    version: v1
   ports:
     - port: 8000
       targetPort: 8000
@@ -170,7 +174,6 @@ spec:
               value: parentbased_always_on
             - name: OTEL_PROPAGATORS
               value: tracecontext,baggage
-
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -260,3 +263,74 @@ spec:
             limits:
               cpu: 250m
               memory: 256Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi-book-service-v2-deployment
+  labels:
+    app: book-service
+    version: v2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: book-service
+      version: v2
+  template:
+    metadata:
+      labels:
+        app: book-service
+        version: v2
+    spec:
+      containers:
+        - name: book-service
+          image: docker.io/kubarev01/book-service:v2
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: book-service-config
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: book-service
+            - name: OTEL_TRACES_EXPORTER
+              value: otlp
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: http/protobuf
+            - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+              value: http://jaeger-collector.observability:4318/v1/traces
+            - name: OTEL_TRACES_SAMPLER
+              value: parentbased_always_on
+            - name: OTEL_PROPAGATORS
+              value: tracecontext,baggage
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: book-service-v2
+  labels:
+    app: book-service
+    version: v2
+spec:
+  selector:
+    app: book-service
+    version: v2
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP

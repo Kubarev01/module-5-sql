@@ -1,3 +1,4 @@
+# ===== STAGE 1: builder =====
 FROM python:3.11-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -12,12 +13,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# В КОНТЕКСТЕ уже папка app/, поэтому без префикса
-COPY requirements.txt ./requirements.txt
-RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
+COPY requirements.txt .
+RUN pip install --upgrade pip && pip install -r requirements.txt
 
 
+# ===== STAGE 2: final =====
 FROM python:3.11-slim AS final
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -28,7 +28,6 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Копируем весь код сервиса (контекст == app/)
 COPY . .
 
 EXPOSE 8000

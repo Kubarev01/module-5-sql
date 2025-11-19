@@ -34,7 +34,6 @@ jobs:
           mkdir -p "$HOME/.kube"
           echo "$KUBE_CONFIG_B64" | base64 -d > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
-          # Показать контекст (без приватных данных)
           kubectl config current-context || true
 
       - name: Sanity check cluster access
@@ -45,8 +44,8 @@ jobs:
       - name: kubectl apply -f ./k8s/
         run: kubectl apply -f ./k8s/
 
-      - name: Force rollout restart (fastapi-book-service)
+      - name: Force rollout restart (book-service)
         if: always()
         run: |
-          kubectl rollout restart deployment/fastapi-book-service || true
-          kubectl rollout status  deployment/fastapi-book-service --timeout=120s || true
+          kubectl rollout restart deployment/book-service || true
+          kubectl rollout status  deployment/book-service --timeout=120s || true
