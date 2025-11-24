@@ -1,10 +1,9 @@
-# app/services/book_service.py
 import asyncio
 import inspect
 import json
 from threading import Thread
 from fastapi import BackgroundTasks
-from kafka_client.producer import producer
+from app.kafka_client.producer import producer
 
 
 # --- фоновая отправка в Kafka ---
@@ -72,7 +71,7 @@ class BookService:
         # если получилось синхронное значение — оповестим редис (если есть)
         if not inspect.isawaitable(result) and result and self.redis:
             pub = getattr(self.redis, "publish", None)
-            if pub:
+            if pub is not None:
                 try:
                     out = pub("cache:invalidate", str(book_id))
                     if inspect.isawaitable(out):
@@ -116,7 +115,7 @@ class BookService:
         result = await _await_maybe(self.repo.update_by_id(book_id, new_data, session=session))
         if result and self.redis:
             pub = getattr(self.redis, "publish", None)
-            if pub:
+            if pub is not None:
                 try:
                     out = pub("cache:invalidate", str(book_id))
                     if inspect.isawaitable(out):

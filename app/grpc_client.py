@@ -1,19 +1,22 @@
-# app/grpc_client.py
 import grpc
-
+import structlog
 from app import app_pb2, app_pb2_grpc
+from app.logging_config import setup_logging
+
+setup_logging("grpc-client")
+log = structlog.get_logger()
 
 
 def get_author(stub, author_id: int):
     request = app_pb2.AuthorRequest(id=author_id)
     response = stub.GetAuthor(request)
-    print(f"Author #{response.id}: {response.name} — {response.biography}")
+    log.info(f"Author #{response.id}: {response.name} — {response.biography}")
 
 
 def list_authors(stub):
     request = app_pb2.Empty()
     for author in stub.ListAuthors(request):
-        print(f"[stream] Author #{author.id}: {author.name}")
+        log.info(f"Author #{author.id}: {author.name}")
 
 
 def main(host: str = "localhost", port: int = 50051):

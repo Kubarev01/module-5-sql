@@ -1,7 +1,7 @@
 import json
 import asyncio
 import os
-
+import structlog
 import aiokafka
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -15,8 +15,8 @@ from opentelemetry.semconv.resource import ResourceAttributes
 from opentelemetry.propagate import extract
 from opentelemetry.instrumentation.pymongo import PymongoInstrumentor
 
-import structlog
-from logging_config import setup_logging
+
+from app.logging_config import setup_logging
 
 # ---- ЛОГИ ----
 setup_logging("analytics-worker")

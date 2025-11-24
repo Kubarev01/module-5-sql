@@ -1,13 +1,6 @@
 from celery import Celery
 
-from celery import Celery
 from opentelemetry.instrumentation.celery import CeleryInstrumentor
-
-
-
-BROKER_URL = "amqp://guest:guest@rabbbitmq:5672//"
-
-RESULT_BACKEND = "rpc://"
 from opentelemetry import trace
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
@@ -15,6 +8,11 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.zipkin.json import ZipkinExporter
 from opentelemetry.semconv.resource import ResourceAttributes
 from opentelemetry.instrumentation.pymongo import PymongoInstrumentor
+
+
+BROKER_URL = "amqp://guest:guest@rabbbitmq:5672//"
+
+RESULT_BACKEND = "rpc://"
 
 resource = Resource(
     attributes={ResourceAttributes.SERVICE_NAME: "analytics-worker"}

@@ -1,5 +1,5 @@
 from fastapi import routing
-from delayed_tasks.worker_service import process_order
+from app.delayed_tasks.worker_service import process_order
 
 router = routing.APIRouter(
     prefix="/order",

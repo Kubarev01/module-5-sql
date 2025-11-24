@@ -4,10 +4,10 @@ from typing import Iterable
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from database.postgres_client import SessionLocal
-from database.redis_client import redis_client as redis
-from models import Author, Book
-from schemas import AuthorSchema, BookSchema
+from app.database.postgres_client import SessionLocal
+from app.database.redis_client import redis_client as redis
+from app.models import Author, Book
+from app.schemas import AuthorSchema, BookSchema
 
 
 class AuthorRepository:

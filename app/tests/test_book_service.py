@@ -1,7 +1,6 @@
-# app/tests/test_book_service.py
 import pytest
 import inspect
-from services.book_service import BookService
+from app.services.book_service import BookService
 
 
 class FakeBookRepository:

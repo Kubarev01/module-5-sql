@@ -1,11 +1,10 @@
 import time
-
-from delayed_tasks.celery_app import celery_app
-
 import structlog
-from logging_config import setup_logging
+from app.logging_config import setup_logging
+from app.delayed_tasks.celery_app import celery_app
+
 setup_logging("order-worker")
-log = structlog.get_logger(service="order-worker")
+log = structlog.get_logger()
 
 
 @celery_app.task(name="process_order", bind=True)

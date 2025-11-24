@@ -1,5 +1,12 @@
 import faust
 
+import structlog
+from app.logging_config import setup_logging
+
+#логи
+setup_logging("faust-analytics")
+log = structlog.get_logger()
+
 app = faust.App(
     'view-counter-app',
     broker='kafka://kafka:9092',
@@ -17,25 +24,21 @@ async def process_views(stream):
     async for event in stream:
         # Если views не пришло, считаем 1 просмотр
         views_count = event.views if hasattr(event, 'views') else 1
-        
         views_per_book[event.book_id] += views_count
-        print(f'[FaustAnalytics] Book {event.book_id}: +{views_count} views, total: {views_per_book[event.book_id]}')
+        log.info(f'Book {event.book_id}: +{views_count} views, total: {views_per_book[event.book_id]}')
 
 @app.timer(interval=5.0)
 async def print_stats():
-    print('\n=== Current Statistics ===')
-    
+    log.info('\n=== Current Statistics ===')
     items_count = 0
     for key in list(views_per_book.keys()):
         count = views_per_book[key]
         if count > 0:
-            print(f'Book {key}: {count} views')
+            log.info(f'Book {key}: {count} views')
             items_count += 1
-    
     if items_count == 0:
-        print('No view data available')
-    
-    print('==========================\n')
+        log.info('No view data available')
+    log.info('==========================\n')
 
 if __name__ == '__main__':
     app.main()

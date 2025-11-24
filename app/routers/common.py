@@ -1,9 +1,7 @@
-from fastapi import APIRouter, HTTPException
 import asyncio
-
-from repositories.book_repository import BookRepository  
-from repositories.review_repository import ReviewsRepository 
-from schemas import BookSchema, ReviewSchema
+from fastapi import APIRouter, HTTPException
+from app.repositories.book_repository import BookRepository  
+from app.repositories.review_repository import ReviewsRepository 
 
 router = APIRouter()
 

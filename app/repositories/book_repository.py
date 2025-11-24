@@ -6,18 +6,18 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# БД и модели
-from database.postgres_client import engine, SessionLocal  # type: ignore
-from models import Base, Book, Author  # type: ignore
-from schemas import AuthorSchema, BookSchema
+from app.database.postgres_client import engine, SessionLocal 
+from app.models import Base, Book, Author  
+from app.schemas import AuthorSchema, BookSchema
+
 
 # Redis может быть недоступен (CI) — делаем мягкий импорт
 try:
-    from database.redis_client import redis_client as redis  # type: ignore
-    from redis.exceptions import RedisError  # type: ignore
-except Exception:  # pragma: no cover
+    from app.database.redis_client import redis_client as redis  
+    from redis.exceptions import RedisError  
+except Exception:  
     redis = None
-
+    
     class RedisError(Exception):
         ...
 

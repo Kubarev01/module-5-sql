@@ -1,6 +1,11 @@
 
 import asyncio
-from kafka_client.analitics_worker import AnaliticsWorker
+import structlog
+from app.logging_config import setup_logging
+from app.kafka_client.analitics_worker import AnaliticsWorker
+
+setup_logging("order-worker")
+log = structlog.get_logger()
 
 async def main():
     worker = AnaliticsWorker()
@@ -9,7 +14,7 @@ async def main():
         while True:
             await asyncio.sleep(1)
     except KeyboardInterrupt:
-        print("Received interrupt, shutting down...")
+        log.info("Received interrupt, shutting down...")
     finally:
         await worker.stop()
 

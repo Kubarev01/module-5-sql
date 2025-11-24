@@ -1,14 +1,14 @@
-from fastapi.testclient import TestClient
-from main import app 
-from database.postgres_client import get_db_session
 import pytest
+import fakeredis.aioredis as fakeredis
+import app.repositories.book_repository as br
+from fastapi.testclient import TestClient
 from httpx import AsyncClient
 from httpx._transports.asgi import ASGITransport
+from app.main import app 
+from app.database.postgres_client import get_db_session
 
 book_id = 35
 
-import fakeredis.aioredis as fakeredis
-import app.repositories.book_repository as br
 
 import pytest
 

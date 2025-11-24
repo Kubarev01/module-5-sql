@@ -1,6 +1,7 @@
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import sessionmaker
+from app.logging_config import logging
 
 @pytest.fixture
 def db_session():
@@ -8,13 +9,13 @@ def db_session():
     SessionLocal = sessionmaker(bind=engine)
     
     session = SessionLocal()
-    print("Сессия создана")
+    logging.info("Сессия создана")
 
     yield session
 
     session.close()
-    print("Сессия закрыта")
+    logging.info("Сессия закрыта")
 
 def test_db_session_works(db_session):
     assert hasattr(db_session, "add")
-    print("Тест сессии выполнен")
+    logging.info("Тест сессии выполнен")

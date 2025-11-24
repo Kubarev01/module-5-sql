@@ -1,6 +1,5 @@
 import logging
 import sys
-
 import structlog
 
 
@@ -25,6 +24,7 @@ def setup_logging(service_name: str) -> None:
         cache_logger_on_first_use=True,
     )
 
+    structlog.contextvars.bind_contextvars(service=service_name)
     
     logger = structlog.get_logger(service=service_name)
     logger.info("service_started")

@@ -1,10 +1,8 @@
-import asyncio
-from typing import List
 from sqlalchemy import select
-from database.postgres_client import SessionLocal
-from database.redis_client import redis_client as redis
-from models import Review
-from schemas import ReviewSchema
+from app.database.postgres_client import SessionLocal
+from app.database.redis_client import redis_client as redis
+from app.models import Review
+from app.schemas import ReviewSchema
 
 
 class ReviewsRepository:

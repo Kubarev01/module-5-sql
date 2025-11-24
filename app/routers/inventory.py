@@ -1,8 +1,6 @@
-from fastapi import APIRouter, FastAPI, HTTPException
-from database.redis_client import redis_client as redis
-from schemas import InventoryUpdate
-from models import Inventory
-
+from fastapi import APIRouter, HTTPException
+from app.database.redis_client import redis_client as redis
+from app.schemas import InventoryUpdate
 
 router = APIRouter(
     prefix="/inventory",

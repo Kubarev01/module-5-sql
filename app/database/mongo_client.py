@@ -1,16 +1,21 @@
 import motor.motor_asyncio
 import os
-
+import structlog
 from opentelemetry import trace
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.zipkin.json import ZipkinExporter
 from opentelemetry.semconv.resource import ResourceAttributes
+from app.logging_config import setup_logging
+
+#логи
+setup_logging("mongo-client")
+log = structlog.get_logger()
 
 resource = Resource(
     attributes={
-        ResourceAttributes.SERVICE_NAME: "mongodb",  # уникальное!
+        ResourceAttributes.SERVICE_NAME: "mongodb",  
     }
 )
 
@@ -30,9 +35,9 @@ db = mongo_client["mydatabase"]
 async def test_connection():
     try:
         await mongo_client.admin.command('ping')
-        print("✅ MongoDB подключен")
+        log.info("✅ MongoDB подключен")
     except Exception as e:
-        print("❌ Ошибка подключения к MongoDB:", e)
+        log.info("❌ Ошибка подключения к MongoDB:", e)
 
 if __name__ == "__main__":
     import asyncio

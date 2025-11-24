@@ -1,8 +1,8 @@
-from httpx import AsyncClient, RequestError, ReadTimeout
 import asyncio
 import backoff
+from httpx import AsyncClient, RequestError, ReadTimeout
 from types import SimpleNamespace
-from repositories.author_repository import AuthorRepository
+from app.repositories.author_repository import AuthorRepository
 
 # важно: тест ждёт pybreaker.CircuitBreakerError
 import pybreaker
